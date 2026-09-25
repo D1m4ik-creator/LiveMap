@@ -1,7 +1,7 @@
 [project]
 name = "livemap"
 version = "0.1.0"
-description = "Add your description here"
+description = "Interactive map of public live cameras in Russia"
 readme = "README.md"
 authors = [
     { name = "Dim4ik-creator", email = "litvinov06062006@gmail.com" }
@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.19.1",
+    "asyncpg>=0.31.0",
     "fastapi>=0.141.1",
     "geoalchemy2>=0.20.0",
     "psycopg2-binary>=2.9.12",
@@ -17,6 +18,13 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     "shapely>=2.1.2",
     "sqlalchemy>=2.0.52",
+    "uvicorn>=0.41.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=8.4.0",
 ]
 
 [project.scripts]

@@ -1,12 +1,12 @@
 from functools import lru_cache
 from pathlib import Path
-from urllib.parse import quote_plus
 
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL
 
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
+ROOT_DIR = Path(__file__).resolve().parents[3]
 
 
 class DatabaseConfig(BaseModel):
@@ -17,9 +17,15 @@ class DatabaseConfig(BaseModel):
     port: int
     echo: bool = False
 
-    def get_db_url(self) -> str:
-        encoded_password = quote_plus(self.password.get_secret_value())
-        return f"postgresql+asyncpg://{self.user}:{encoded_password}@{self.host}:{self.port}/{self.db}"
+    def get_db_url(self) -> URL:
+        return URL.create(
+            drivername="postgresql+asyncpg",
+            username=self.user,
+            password=self.password.get_secret_value(),
+            host=self.host,
+            port=self.port,
+            database=self.db,
+        )
 
 
 class Config(BaseSettings):
@@ -27,16 +33,18 @@ class Config(BaseSettings):
         env_file=str(ROOT_DIR / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
-        env_prefix="",
+        case_sensitive=False,
     )
 
-    postgres_user: str = Field(env="POSTGRES_USER")
-    postgres_password: SecretStr = Field(env="POSTGRES_PASSWORD")
-    postgres_db: str = Field(env="POSTGRES_DB")
-    postgres_host: str = Field(env="POSTGRES_HOST")
-    postgres_port: int = Field(env="POSTGRES_PORT")
+    postgres_user: str
+    postgres_password: SecretStr
+    postgres_db: str
+    postgres_host: str
+    postgres_port: int
 
-    database_echo: bool = Field(default=False, env="DATABASE_ECHO")
+    database_echo: bool = False
+    app_host: str = "127.0.0.1"
+    app_port: int = 8000
 
     @property
     def database(self) -> DatabaseConfig:
@@ -53,6 +61,3 @@ class Config(BaseSettings):
 @lru_cache
 def get_settings() -> Config:
     return Config()
-
-
-config = get_settings()

@@ -15,6 +15,7 @@ from livemap.api.schemas.catalog import (
 )
 from livemap.db.models import Camera, Place, Source
 from livemap.services.geo import BBox
+from livemap.services.source_rules import public_iframe_query_allowed
 
 
 MAX_MAP_ITEMS = 500
@@ -48,7 +49,14 @@ def available_camera(now: datetime):
         approved_source(now),
         Source.stream_url.is_not(None),
         Source.stream_url.like("https://%"),
-        ~Source.stream_url.contains("?"),
+        or_(
+            ~Source.stream_url.contains("?"),
+            and_(
+                Camera.playback_type == "iframe",
+                Source.embed_host == "open.ivideon.com",
+                Source.stream_url.like("https://open.ivideon.com/embed/v3/?%"),
+            ),
+        ),
         Source.secret_ref.is_(None),
     )
 
@@ -168,7 +176,11 @@ async def place_detail(session: AsyncSession, place_id: int) -> PlaceDetail | No
             and camera.playback_type in ("hls", "iframe")
             and source.secret_ref is None
             and bool(source.stream_url and source.stream_url.startswith("https://"))
-            and "?" not in source.stream_url
+            and (
+                public_iframe_query_allowed(source.stream_url, source.embed_host)
+                if camera.playback_type == "iframe"
+                else "?" not in source.stream_url
+            )
             and iframe_host_valid
         )
         availability_note = None

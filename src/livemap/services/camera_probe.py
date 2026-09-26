@@ -16,7 +16,7 @@ from urllib.parse import urljoin, urlsplit
 import aiohttp
 
 from livemap.api.errors import APIError
-from livemap.services.source_rules import validate_url
+from livemap.services.source_rules import public_iframe_query_allowed, validate_url
 
 
 MAX_MANIFEST_BYTES = 256 * 1024
@@ -36,12 +36,12 @@ class ProbeResult:
     duration_ms: int
 
 
-def safe_https_url(value: str) -> str:
+def safe_https_url(value: str, *, allow_query: bool = False) -> str:
     try:
         validate_url(value, {"https"})
     except APIError as exc:
         raise ProbeFailure("unsafe_url") from exc
-    if urlsplit(value).query:
+    if urlsplit(value).query and not allow_query:
         raise ProbeFailure("signed_url_requires_gateway")
     return value
 
@@ -117,8 +117,8 @@ class CameraProbe:
     async def __aexit__(self, *_exc: object) -> None:
         await self.client.close()
 
-    async def _fetch(self, url: str, limit: int, *, cors: bool, sample: bool = False) -> tuple[bytes, aiohttp.typedefs.LooseHeaders]:
-        safe_https_url(url)
+    async def _fetch(self, url: str, limit: int, *, cors: bool, sample: bool = False, allow_query: bool = False) -> tuple[bytes, aiohttp.typedefs.LooseHeaders]:
+        safe_https_url(url, allow_query=allow_query)
         try:
             async with self.client.get(url, allow_redirects=False) as response:
                 if 300 <= response.status < 400:
@@ -151,7 +151,9 @@ class CameraProbe:
     async def iframe(self, url: str, embed_host: str | None, verified: bool) -> None:
         if not embed_host or urlsplit(url).hostname != embed_host:
             raise ProbeFailure("embed_host_mismatch")
-        _, headers = await self._fetch(url, 0, cors=False, sample=True)
+        if not public_iframe_query_allowed(url, embed_host):
+            raise ProbeFailure("signed_url_requires_gateway")
+        _, headers = await self._fetch(url, 0, cors=False, sample=True, allow_query=True)
         if not frame_policy_allows(headers, self.origin):
             raise ProbeFailure("frame_denied")
         if not verified:

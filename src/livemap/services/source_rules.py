@@ -7,6 +7,8 @@ from livemap.db.models import Camera, Source
 
 
 SENSITIVE_QUERY_KEYS = {"token", "key", "api_key", "apikey", "password", "pass", "secret", "signature", "sig", "auth"}
+IVIDEON_EMBED_HOST = "open.ivideon.com"
+IVIDEON_EMBED_KEYS = {"camera", "server", "lang", "width", "height"}
 
 
 def validate_url(value: str, schemes: set[str]) -> str:
@@ -55,6 +57,27 @@ def validate_source_metadata(source: Source) -> None:
         validate_url(f"https://{host}/", {"https"})
 
 
+def public_iframe_query_allowed(value: str, embed_host: str | None) -> bool:
+    """Allow known Ivideon iframe identifiers, never an arbitrary query string."""
+    parsed = urlsplit(value)
+    if not parsed.query:
+        return True
+    if embed_host != IVIDEON_EMBED_HOST or parsed.hostname != embed_host or parsed.path != "/embed/v3/":
+        return False
+    pairs = parse_qsl(parsed.query, keep_blank_values=True)
+    keys = [key for key, _ in pairs]
+    values = dict(pairs)
+    return (
+        len(pairs) == len(set(keys))
+        and set(keys) <= IVIDEON_EMBED_KEYS
+        and "camera" in values and values["camera"].isdigit()
+        and "server" in values and len(values["server"]) <= 80
+        and values["server"].replace("-", "").isalnum()
+        and values.get("lang", "ru") in {"ru", "en"}
+        and all(not values.get(key) or values[key].isdigit() for key in ("width", "height"))
+    )
+
+
 def ensure_source_publishable(source: Source) -> None:
     if not source.is_approved:
         raise APIError("source_not_approved", "Source must be approved before publication", 409)
@@ -66,8 +89,6 @@ def ensure_source_publishable(source: Source) -> None:
         raise APIError("missing_stream", "Source has no stream URL", 409)
     if source.secret_ref:
         raise APIError("gateway_required", "Source requires a media gateway", 409)
-    if "?" in source.stream_url:
-        raise APIError("gateway_required", "Stream URL with query parameters requires a media gateway", 409)
 
 
 def ensure_camera_publishable(camera: Camera, source: Source) -> None:
@@ -79,3 +100,8 @@ def ensure_camera_publishable(camera: Camera, source: Source) -> None:
     validate_url(source.stream_url, {"https"})
     if camera.playback_type == "iframe" and not source.embed_host:
         raise APIError("embed_host_required", "Iframe publication requires an approved embed host", 409)
+    if camera.playback_type == "iframe":
+        if not public_iframe_query_allowed(source.stream_url, source.embed_host):
+            raise APIError("gateway_required", "Iframe URL query is not approved for direct playback", 409)
+    elif "?" in source.stream_url:
+        raise APIError("gateway_required", "HLS URL with query parameters requires a media gateway", 409)

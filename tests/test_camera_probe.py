@@ -6,6 +6,7 @@ from livemap.services.camera_probe import (
     ProbeFailure, cors_allowed, first_playlist_uri, frame_policy_allows,
     public_dns_answers, safe_https_url,
 )
+from livemap.services.source_rules import public_iframe_query_allowed
 
 
 def test_probe_rejects_private_dns_even_when_mixed_with_public() -> None:
@@ -25,6 +26,19 @@ def test_probe_rejects_signed_and_non_https_urls() -> None:
     ):
         with pytest.raises(ProbeFailure):
             safe_https_url(url)
+
+
+def test_only_known_public_iframe_query_is_allowed() -> None:
+    url = "https://open.ivideon.com/embed/v3/?camera=0&server=100-8fc028e011c3992b792d655e57a42947&lang=ru&width=&height="
+    assert public_iframe_query_allowed(url, "open.ivideon.com")
+    assert safe_https_url(url, allow_query=True) == url
+    for unsafe in (
+        "https://open.ivideon.com/embed/v3/?camera=0&server=public&token=secret",
+        "https://open.ivideon.com/embed/v3/?camera=0&camera=1&server=public",
+        "https://open.ivideon.com/embed/v3/?camera=0&server=public&session=secret",
+        "https://other.example/embed/v3/?camera=0&server=public",
+    ):
+        assert not public_iframe_query_allowed(unsafe, "open.ivideon.com")
 
 
 def test_playlist_and_browser_headers() -> None:

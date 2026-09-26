@@ -51,10 +51,10 @@
     "playback_type": "iframe",
     "owner_name": "Додо Пицца",
     "public_page_url": "https://www.geocam.ru/online/dodo-ershova/",
-    "stream_url": null,
-    "embed_host": null,
+    "stream_url": "https://open.ivideon.com/embed/v3/?camera=0&height=&lang=ru&server=100-8fc028e011c3992b792d655e57a42947&width=",
+    "embed_host": "open.ivideon.com",
     "attribution": "Додо Пицца",
-    "permission_note": "Кандидат по странице агрегатора; публичный показ в сервисах Додо не означает разрешения на встраивание в LiveMap. Требуется найти первоисточник и получить условия.",
+    "permission_note": "Кандидат: агрегатор Geocam использует публичный iframe Ivideon для этой кухни. Додо не подтверждала право LiveMap на встраивание; требуется проверить разрешение владельца и работу плеера с домена проекта.",
     "permission_evidence_url": "https://www.geocam.ru/online/dodo-ershova/",
     "permission_reviewed_at": "2026-09-26T00:00:00+03:00",
     "removal_contact": "feedback@dodopizza.com"

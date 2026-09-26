@@ -9,7 +9,8 @@ function safePlayback(camera: PublicCamera): URL | null {
   if (camera.status !== 'online' || !camera.playback_url) return null;
   try {
     const url = new URL(camera.playback_url);
-    if (url.protocol !== 'https:' || url.username || url.password || url.search) return null;
+    if (url.protocol !== 'https:' || url.username || url.password) return null;
+    if (camera.playback_type !== 'iframe' && url.search) return null;
     if (camera.playback_type === 'iframe' && url.hostname !== camera.embed_host) return null;
     return url;
   } catch {

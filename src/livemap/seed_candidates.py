@@ -21,14 +21,19 @@ async def seed() -> int:
         for item in candidates:
             existing = (await session.execute(select(Place).where(Place.slug == item["slug"]))).scalar_one_or_none()
             if existing is not None:
-                if item["removal_contact"]:
-                    source = (await session.execute(
-                        select(Source).join(Camera, Camera.source_id == Source.id)
-                        .where(Camera.place_id == existing.id, Source.owner_name == item["owner_name"])
-                        .limit(1)
-                    )).scalar_one_or_none()
-                    if source and not source.is_approved and not source.removal_contact:
+                source = (await session.execute(
+                    select(Source).join(Camera, Camera.source_id == Source.id)
+                    .where(Camera.place_id == existing.id, Source.owner_name == item["owner_name"])
+                    .limit(1)
+                )).scalar_one_or_none()
+                if source and not source.is_approved:
+                    if item["removal_contact"] and not source.removal_contact:
                         source.removal_contact = item["removal_contact"]
+                    if source.stream_url is None and source.embed_host is None and item["stream_url"]:
+                        source.stream_url = item["stream_url"]
+                        source.embed_host = item["embed_host"]
+                        source.permission_note = item["permission_note"]
+                        validate_source_metadata(source)
                 continue
             place = Place(
                 slug=item["slug"], name=item["name"], city=item["city"], region=item["region"],

@@ -33,6 +33,7 @@ livemap = "livemap:main"
 livemap-admin = "livemap.admin_cli:main"
 livemap-worker = "livemap.worker:main"
 livemap-seed-candidates = "livemap.seed_candidates:main"
+livemap-seed-verified = "livemap.seed_verified:main"
 
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]

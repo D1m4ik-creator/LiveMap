@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import json
+import re
 import socket
 import time
 from dataclasses import dataclass
@@ -21,6 +23,8 @@ from livemap.services.source_rules import public_iframe_query_allowed, validate_
 
 MAX_MANIFEST_BYTES = 256 * 1024
 MAX_FRAME_BYTES = 16 * 1024
+MAX_PROVIDER_STATUS_BYTES = 256 * 1024
+RUTUBE_EMBED_PATH = re.compile(r"/play/embed/([0-9a-f]{32})/?\Z")
 
 
 class ProbeFailure(Exception):
@@ -101,6 +105,32 @@ def frame_policy_allows(headers: aiohttp.typedefs.LooseHeaders, origin: str) -> 
     return True
 
 
+def rutube_embed_id(url: str) -> str | None:
+    parsed = urlsplit(url)
+    if (
+        parsed.scheme != "https" or parsed.hostname != "rutube.ru" or parsed.port is not None
+        or parsed.username or parsed.password or parsed.query or parsed.fragment
+    ):
+        return None
+    match = RUTUBE_EMBED_PATH.fullmatch(parsed.path)
+    return match.group(1) if match else None
+
+
+def rutube_live_available(payload: object) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    access = payload.get("acl_access")
+    streams = payload.get("live_streams")
+    return (
+        payload.get("stream_type") == "broadcast"
+        and payload.get("has_video") is True
+        and payload.get("is_hidden") is False
+        and isinstance(access, dict) and access.get("allowed") is True
+        and isinstance(streams, dict) and isinstance(streams.get("hls"), list)
+        and bool(streams["hls"])
+    )
+
+
 class CameraProbe:
     def __init__(self, origin: str) -> None:
         self.origin = origin.rstrip("/")
@@ -108,7 +138,7 @@ class CameraProbe:
         connector = aiohttp.TCPConnector(resolver=PublicResolver(), use_dns_cache=False, limit=4)
         self.client = aiohttp.ClientSession(
             connector=connector, timeout=timeout, trust_env=False,
-            headers={"Origin": self.origin, "User-Agent": "LiveMap-availability/1.0"},
+            headers={"User-Agent": "LiveMap-availability/1.0"},
         )
 
     async def __aenter__(self) -> CameraProbe:
@@ -120,7 +150,9 @@ class CameraProbe:
     async def _fetch(self, url: str, limit: int, *, cors: bool, sample: bool = False, allow_query: bool = False) -> tuple[bytes, aiohttp.typedefs.LooseHeaders]:
         safe_https_url(url, allow_query=allow_query)
         try:
-            async with self.client.get(url, allow_redirects=False) as response:
+            async with self.client.get(
+                url, allow_redirects=False, headers={"Origin": self.origin} if cors else None
+            ) as response:
                 if 300 <= response.status < 400:
                     raise ProbeFailure("redirect_rejected")
                 if response.status not in (200, 206):
@@ -158,6 +190,19 @@ class CameraProbe:
             raise ProbeFailure("frame_denied")
         if not verified:
             raise ProbeFailure("embed_unverified")
+        if embed_host == "rutube.ru":
+            video_id = rutube_embed_id(url)
+            if video_id is None:
+                raise ProbeFailure("invalid_provider_embed")
+            body, _ = await self._fetch(
+                f"https://rutube.ru/api/play/options/{video_id}", MAX_PROVIDER_STATUS_BYTES, cors=False
+            )
+            try:
+                options = json.loads(body)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ProbeFailure("invalid_provider_status") from exc
+            if not rutube_live_available(options):
+                raise ProbeFailure("provider_offline")
 
     async def check(self, playback_type: str, url: str, *, embed_host: str | None = None, embed_verified: bool = False) -> ProbeResult:
         start = time.monotonic()

@@ -4,7 +4,7 @@ import pytest
 
 from livemap.services.camera_probe import (
     ProbeFailure, cors_allowed, first_playlist_uri, frame_policy_allows,
-    public_dns_answers, safe_https_url,
+    public_dns_answers, rutube_embed_id, rutube_live_available, safe_https_url,
 )
 from livemap.services.source_rules import public_iframe_query_allowed
 
@@ -50,3 +50,19 @@ def test_playlist_and_browser_headers() -> None:
     assert not frame_policy_allows({"X-Frame-Options": "DENY"}, "https://livemap.example")
     assert not frame_policy_allows({"Content-Security-Policy": "frame-ancestors 'self'"}, "https://livemap.example")
     assert frame_policy_allows({"Content-Security-Policy": "frame-ancestors https://livemap.example"}, "https://livemap.example")
+
+
+def test_rutube_live_status_requires_public_active_broadcast() -> None:
+    embed = "https://rutube.ru/play/embed/627e3e6cfcbdf991f5bc560182570dfc"
+    assert rutube_embed_id(embed) == "627e3e6cfcbdf991f5bc560182570dfc"
+    assert rutube_embed_id(embed + "?p=private") is None
+    assert rutube_embed_id(embed.replace("https://", "http://")) is None
+    assert rutube_embed_id("https://rutube.ru/play/embed/not-an-id") is None
+    active = {
+        "stream_type": "broadcast", "has_video": True, "is_hidden": False,
+        "acl_access": {"allowed": True}, "live_streams": {"hls": [{"url": "https://example.org/live"}]},
+    }
+    assert rutube_live_available(active)
+    assert not rutube_live_available({**active, "live_streams": {"hls": []}})
+    assert not rutube_live_available({**active, "acl_access": {"allowed": False}})
+    assert not rutube_live_available({**active, "stream_type": "video"})

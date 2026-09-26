@@ -4,6 +4,15 @@ import { CameraPlayer } from './CameraPlayer';
 import type { PlaceDetail, PublicCamera } from './types';
 import './style.css';
 
+function cameraCountLabel(count: number): string {
+  const lastTwo = count % 100;
+  const last = count % 10;
+  const noun = last === 1 && lastTwo !== 11 ? 'камера'
+    : last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14) ? 'камеры'
+      : 'камер';
+  return `${count} ${noun}`;
+}
+
 function App() {
   const placeId = new URLSearchParams(window.location.search).get('place');
   const [place, setPlace] = useState<PlaceDetail | null>(null);
@@ -35,7 +44,7 @@ function App() {
               <span className={`signal-dot ${item.status}`} /><span className="camera-name">{item.name}<small>{item.source_name}</small></span><span className="camera-status">{item.status === 'online' ? 'Смотреть' : item.availability_note ?? item.status}</span><span className="arrow">↗</span>
             </button>
           ))}
-          <div className="list-bottom">{place ? `${place.cameras.length} камер` : 'КАТАЛОГ В РАЗРАБОТКЕ'} <span>● LIVE MAP</span></div>
+          <div className="list-bottom">{place ? cameraCountLabel(place.cameras.length) : 'КАТАЛОГ В РАЗРАБОТКЕ'} <span>● LIVE MAP</span></div>
         </section>
       </div>
       {camera && <div className="modal-backdrop" onClick={() => setCamera(null)}><div onClick={(event) => event.stopPropagation()}><CameraPlayer camera={camera} onClose={() => setCamera(null)} /></div></div>}

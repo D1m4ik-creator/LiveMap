@@ -85,7 +85,6 @@ export function CameraPlayer({ camera, onClose }: Props) {
             sandbox="allow-scripts allow-same-origin allow-presentation"
             allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
             referrerPolicy="strict-origin-when-cross-origin"
-            allowFullScreen
             onLoad={() => setState('playing')}
             onError={() => setState('error')}
           />

@@ -74,6 +74,9 @@ class SourceInput(BaseModel):
     secret_ref: str | None = Field(default=None, pattern=r"^[A-Z][A-Z0-9_]*$", max_length=160)
     attribution: str = Field(min_length=2, max_length=255)
     permission_note: str = Field(min_length=5, max_length=4000)
+    permission_evidence_url: str | None = Field(default=None, max_length=1000)
+    permission_reviewed_at: datetime | None = None
+    embed_host: str | None = Field(default=None, max_length=255)
     permission_expires_at: datetime | None = None
     removal_contact: str | None = Field(default=None, max_length=255)
 
@@ -84,6 +87,13 @@ class SourceInput(BaseModel):
             raise ValueError("Expiry must include a timezone")
         return value
 
+    @field_validator("permission_reviewed_at")
+    @classmethod
+    def aware_review(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.utcoffset() is None:
+            raise ValueError("Review time must include a timezone")
+        return value
+
 
 class SourcePatch(BaseModel):
     owner_name: str | None = Field(default=None, min_length=2, max_length=255)
@@ -92,11 +102,15 @@ class SourcePatch(BaseModel):
     secret_ref: str | None = Field(default=None, pattern=r"^[A-Z][A-Z0-9_]*$", max_length=160)
     attribution: str | None = Field(default=None, min_length=2, max_length=255)
     permission_note: str | None = Field(default=None, min_length=5, max_length=4000)
+    permission_evidence_url: str | None = Field(default=None, max_length=1000)
+    permission_reviewed_at: datetime | None = None
+    embed_host: str | None = Field(default=None, max_length=255)
     permission_expires_at: datetime | None = None
     removal_contact: str | None = Field(default=None, max_length=255)
     is_approved: bool | None = None
 
     _aware_expiry = field_validator("permission_expires_at")(SourceInput.aware_expiry.__func__)
+    _aware_review = field_validator("permission_reviewed_at")(SourceInput.aware_review.__func__)
 
 
 class SourceAdminOutput(SourceInput):
@@ -130,8 +144,10 @@ class CameraPatch(BaseModel):
     valid_until: datetime | None = None
     is_published: bool | None = None
     status: Literal["online", "offline", "unknown"] | None = None
+    embed_verified_at: datetime | None = None
 
     _aware_valid_until = field_validator("valid_until")(CameraInput.aware_valid_until.__func__)
+    _aware_embed_verified_at = field_validator("embed_verified_at")(SourceInput.aware_review.__func__)
 
 
 class CameraAdminOutput(CameraInput):
@@ -140,6 +156,12 @@ class CameraAdminOutput(CameraInput):
     is_published: bool
     status: Literal["online", "offline", "unknown"]
     last_checked_at: datetime | None
+    last_success_at: datetime | None
+    next_check_at: datetime | None
+    last_error_code: str | None
+    consecutive_failures: int
+    embed_verified_at: datetime | None
+    unpublished_reason: str | None
     created_at: datetime
     updated_at: datetime
 

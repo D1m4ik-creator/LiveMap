@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, String, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from livemap.db.base import Base
@@ -29,6 +29,12 @@ class Camera(Base):
     status: Mapped[str] = mapped_column(String(16), default="unknown", nullable=False)
     is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_code: Mapped[str | None] = mapped_column(String(80))
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    embed_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    unpublished_reason: Mapped[str | None] = mapped_column(String(80))
     valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

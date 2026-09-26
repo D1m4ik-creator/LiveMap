@@ -45,6 +45,9 @@ class Config(BaseSettings):
     database_echo: bool = False
     app_host: str = "127.0.0.1"
     app_port: int = 8000
+    public_origin: str = "http://localhost:5173"
+    camera_check_interval_seconds: int = 300
+    camera_check_concurrency: int = 4
 
     @property
     def database(self) -> DatabaseConfig:

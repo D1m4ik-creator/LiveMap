@@ -8,6 +8,7 @@ from livemap.api.routers.admin_auth import router as admin_auth_router
 from livemap.api.routers.admin_catalog import router as admin_catalog_router
 from livemap.api.routers.admin_import import router as admin_import_router
 from livemap.api.routers.health import router as health_router
+from livemap.api.routers.monitoring import admin_router as monitoring_admin_router, public_router as monitoring_public_router
 from livemap.api.routers.places import router as places_router
 from livemap.core.config import get_settings
 from livemap.core.engine import close_engine, get_engine
@@ -34,6 +35,8 @@ def create_app() -> FastAPI:
     app.include_router(admin_auth_router, prefix="/api/v1")
     app.include_router(admin_catalog_router, prefix="/api/v1")
     app.include_router(admin_import_router, prefix="/api/v1")
+    app.include_router(monitoring_public_router, prefix="/api/v1")
+    app.include_router(monitoring_admin_router, prefix="/api/v1")
     return app
 
 

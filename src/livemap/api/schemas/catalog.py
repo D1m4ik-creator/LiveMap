@@ -34,10 +34,13 @@ class PublicCamera(BaseModel):
     playback_type: Literal["hls", "iframe", "rtsp"]
     status: Literal["online", "offline", "unknown"]
     last_checked_at: datetime | None
+    last_success_at: datetime | None
+    availability_note: str | None
     source_name: str
     source_page_url: str
     attribution: str
     playback_url: str | None
+    embed_host: str | None
 
 
 class PlaceDetail(BaseModel):

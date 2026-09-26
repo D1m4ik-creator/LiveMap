@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 
 from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,9 @@ MAX_MAP_ITEMS = 500
 def approved_source(now: datetime):
     return and_(
         Source.is_approved.is_(True),
+        Source.permission_evidence_url.is_not(None),
+        Source.permission_reviewed_at.is_not(None),
+        Source.removal_contact.is_not(None),
         or_(Source.permission_expires_at.is_(None), Source.permission_expires_at > now),
     )
 
@@ -30,7 +34,16 @@ def available_camera(now: datetime):
     return and_(
         Camera.is_published.is_(True),
         Camera.status == "online",
+        Camera.last_checked_at >= now - timedelta(minutes=15),
         Camera.playback_type.in_(("hls", "iframe")),
+        or_(
+            Camera.playback_type == "hls",
+            and_(
+                Camera.playback_type == "iframe",
+                Source.embed_host.is_not(None),
+                Camera.embed_verified_at >= now - timedelta(days=7),
+            ),
+        ),
         or_(Camera.valid_until.is_(None), Camera.valid_until > now),
         approved_source(now),
         Source.stream_url.is_not(None),
@@ -138,24 +151,45 @@ async def place_detail(session: AsyncSession, place_id: int) -> PlaceDetail | No
         return None
     public_cameras = []
     for camera, source in cameras:
+        effective_status = camera.status
+        if effective_status == "online" and (
+            not camera.last_checked_at or camera.last_checked_at < now - timedelta(minutes=15)
+            or (camera.playback_type == "iframe" and (
+                not camera.embed_verified_at or camera.embed_verified_at < now - timedelta(days=7)
+            ))
+        ):
+            effective_status = "unknown"
+        iframe_host_valid = camera.playback_type != "iframe" or (
+            bool(source.embed_host and source.stream_url)
+            and urlsplit(source.stream_url).hostname == source.embed_host
+        )
         can_play = (
-            camera.status == "online"
+            effective_status == "online"
             and camera.playback_type in ("hls", "iframe")
             and source.secret_ref is None
             and bool(source.stream_url and source.stream_url.startswith("https://"))
             and "?" not in source.stream_url
+            and iframe_host_valid
         )
+        availability_note = None
+        if effective_status == "offline":
+            availability_note = "Трансляция временно недоступна"
+        elif effective_status == "unknown":
+            availability_note = "Доступность пока не подтверждена"
         public_cameras.append(
             PublicCamera(
                 id=camera.id,
                 name=camera.name,
                 playback_type=camera.playback_type,
-                status=camera.status,
+                status=effective_status,
                 last_checked_at=camera.last_checked_at,
+                last_success_at=camera.last_success_at,
+                availability_note=availability_note,
                 source_name=source.owner_name,
                 source_page_url=source.public_page_url,
                 attribution=source.attribution,
                 playback_url=source.stream_url if can_play else None,
+                embed_host=source.embed_host if can_play and camera.playback_type == "iframe" else None,
             )
         )
     return PlaceDetail(

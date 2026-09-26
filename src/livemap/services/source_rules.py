@@ -44,9 +44,22 @@ def validate_source_urls(public_page_url: str, stream_url: str | None) -> None:
         validate_url(stream_url, {"https", "rtsp"})
 
 
+def validate_source_metadata(source: Source) -> None:
+    validate_source_urls(source.public_page_url, source.stream_url)
+    if source.permission_evidence_url:
+        validate_url(source.permission_evidence_url, {"https"})
+    if source.embed_host:
+        host = source.embed_host.lower().rstrip(".")
+        if host != source.embed_host or not source.stream_url or urlsplit(source.stream_url).hostname != host:
+            raise APIError("invalid_embed_host", "Embed host must exactly match the stream URL host", 400)
+        validate_url(f"https://{host}/", {"https"})
+
+
 def ensure_source_publishable(source: Source) -> None:
     if not source.is_approved:
         raise APIError("source_not_approved", "Source must be approved before publication", 409)
+    if not source.permission_evidence_url or not source.permission_reviewed_at or not source.removal_contact:
+        raise APIError("rights_incomplete", "Permission evidence, review date and removal contact are required", 409)
     if source.permission_expires_at and source.permission_expires_at <= datetime.now(timezone.utc):
         raise APIError("permission_expired", "Source permission has expired", 409)
     if not source.stream_url:
@@ -64,3 +77,5 @@ def ensure_camera_publishable(camera: Camera, source: Source) -> None:
     if camera.valid_until and camera.valid_until <= datetime.now(timezone.utc):
         raise APIError("camera_expired", "Camera validity has expired", 409)
     validate_url(source.stream_url, {"https"})
+    if camera.playback_type == "iframe" and not source.embed_host:
+        raise APIError("embed_host_required", "Iframe publication requires an approved embed host", 409)

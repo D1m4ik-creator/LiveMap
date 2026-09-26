@@ -31,7 +31,7 @@ from livemap.services.catalog_admin import (
     require_place,
     require_source,
 )
-from livemap.services.source_rules import ensure_camera_publishable, validate_source_urls
+from livemap.services.source_rules import ensure_camera_publishable, validate_source_metadata
 
 
 router = APIRouter(
@@ -138,8 +138,8 @@ async def list_sources(
 
 @router.post("/sources", response_model=SourceAdminOutput, status_code=201)
 async def create_source(body: SourceInput, session: SessionDep, actor: AdminUser = Depends(current_user)) -> SourceAdminOutput:
-    validate_source_urls(body.public_page_url, body.stream_url)
     source = Source(**body.model_dump(), is_approved=False)
+    validate_source_metadata(source)
     session.add(source)
     await session.flush()
     audit(session, actor, "create", "source", source.id, f"Created draft source for {source.owner_name}")
@@ -168,12 +168,31 @@ async def update_source(source_id: int, body: SourcePatch, session: SessionDep, 
         if value is None and key in ("owner_name", "public_page_url", "attribution", "permission_note"):
             raise APIError("invalid_field", f"{key} cannot be null", 400)
         setattr(source, key, value)
-    validate_source_urls(source.public_page_url, source.stream_url)
-    if data and any(key in data for key in ("owner_name", "public_page_url", "stream_url", "permission_note", "permission_expires_at")):
+    validate_source_metadata(source)
+    reset_approval = any(key in data for key in (
+        "owner_name", "public_page_url", "stream_url", "secret_ref", "attribution",
+        "permission_note", "permission_evidence_url", "permission_reviewed_at",
+        "embed_host", "permission_expires_at", "removal_contact",
+    ))
+    if approved is True and reset_approval:
+        raise APIError("review_required", "Review changed source in a separate request before approval", 409)
+    if reset_approval:
         source.is_approved = False
+        linked_cameras = (await session.execute(
+            select(Camera).where(Camera.source_id == source.id)
+        )).scalars()
+        for camera in linked_cameras:
+            camera.is_published = False
+            camera.status = "unknown"
+            camera.last_checked_at = None
+            camera.embed_verified_at = None
+            camera.unpublished_reason = "source_changed"
+            audit(session, actor, "unpublish", "camera", camera.id, f"Camera {camera.id} unpublished after source change")
     if approved is True:
         if not source.stream_url or (source.permission_expires_at and source.permission_expires_at <= datetime.now(timezone.utc)):
             raise APIError("invalid_source", "Source URL and current permission are required", 409)
+        if not source.permission_evidence_url or not source.permission_reviewed_at or not source.removal_contact:
+            raise APIError("rights_incomplete", "Permission evidence, review date and removal contact are required", 409)
         linked_cameras = (
             await session.execute(select(Camera).where(Camera.source_id == source.id))
         ).scalars()
@@ -184,6 +203,15 @@ async def update_source(source_id: int, body: SourcePatch, session: SessionDep, 
                 raise APIError("incompatible_source", "Source URL conflicts with linked camera type", 409) from exc
     if approved is not None:
         source.is_approved = approved
+        if approved is False and not reset_approval:
+            linked_cameras = (await session.execute(
+                select(Camera).where(Camera.source_id == source.id)
+            )).scalars()
+            for camera in linked_cameras:
+                camera.is_published = False
+                camera.status = "unknown"
+                camera.unpublished_reason = "permission_revoked"
+                audit(session, actor, "unpublish", "camera", camera.id, f"Camera {camera.id} unpublished after permission revocation")
     audit(session, actor, "update", "source", source.id, f"Updated source {source.id}; approved={source.is_approved}")
     await commit_or_conflict(session)
     await session.refresh(source)
@@ -241,7 +269,7 @@ async def update_camera(camera_id: int, body: CameraPatch, session: SessionDep, 
     if "status" in body.model_fields_set and status is None:
         raise APIError("invalid_field", "status cannot be null", 400)
     for key, value in data.items():
-        if value is None and key not in ("valid_until",):
+        if value is None and key not in ("valid_until", "embed_verified_at"):
             raise APIError("invalid_field", f"{key} cannot be null", 400)
         setattr(camera, key, value)
     await require_place(session, camera.place_id)
@@ -250,6 +278,7 @@ async def update_camera(camera_id: int, body: CameraPatch, session: SessionDep, 
     if any(key in data for key in ("source_id", "playback_type")):
         camera.is_published = False
         camera.status = "unknown"
+        camera.embed_verified_at = None
     if publication:
         ensure_camera_publishable(camera, source)
     if publication is not None:

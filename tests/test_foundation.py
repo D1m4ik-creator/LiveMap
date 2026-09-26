@@ -51,7 +51,8 @@ def test_settings_load_root_env_and_async_driver() -> None:
 def test_models_are_registered_once_with_relationships() -> None:
     configure_mappers()
     assert set(Base.metadata.tables) == {
-        "places", "sources", "cameras", "admin_users", "admin_sessions", "audit_events"
+        "places", "sources", "cameras", "camera_checks", "camera_reports",
+        "admin_users", "admin_sessions", "audit_events"
     }
     assert Camera.__table__.c.place_id.foreign_keys
     assert Place.cameras.property.back_populates == "place"

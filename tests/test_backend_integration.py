@@ -6,14 +6,17 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from livemap.api.app import app
 from livemap.core.config import ROOT_DIR, get_settings
 from livemap.core.engine import get_session
-from livemap.db.models import AdminUser
+from livemap.db.models import AdminUser, Camera, CameraCheck, Place, Source
 from livemap.services.auth import hash_password
+from livemap.services.catalog_admin import point
+from livemap.services.camera_probe import ProbeResult
+from livemap.worker import DueCamera, save_check
 
 
 @pytest.fixture(scope="module")
@@ -112,6 +115,9 @@ def test_admin_catalog_map_search_and_import(test_database_url) -> None:
                     "owner_name": "Test owner", "public_page_url": "https://example.org/camera",
                     "stream_url": "https://example.org/live.m3u8", "attribution": "Test owner",
                     "permission_note": "Integration test source; test database only",
+                    "permission_evidence_url": "https://example.org/permission",
+                    "permission_reviewed_at": "2026-09-26T00:00:00+00:00",
+                    "removal_contact": "operator@example.org",
                 })
                 assert source.status_code == 201, source.text
                 source_id = source.json()["id"]
@@ -220,6 +226,9 @@ def test_admin_catalog_map_search_and_import(test_database_url) -> None:
                     "owner_name": "Secret owner", "public_page_url": "https://example.org/secret",
                     "stream_url": "https://example.org/private.m3u8", "secret_ref": "PRIVATE_STREAM_KEY",
                     "attribution": "Secret owner", "permission_note": "Permission for gateway only",
+                    "permission_evidence_url": "https://example.org/permission",
+                    "permission_reviewed_at": "2026-09-26T00:00:00+00:00",
+                    "removal_contact": "operator@example.org",
                 })
                 assert secret_source.status_code == 201, secret_source.text
                 secret_id = secret_source.json()["id"]
@@ -238,6 +247,9 @@ def test_admin_catalog_map_search_and_import(test_database_url) -> None:
                     "owner_name": "Query owner", "public_page_url": "https://example.org/query",
                     "stream_url": "https://example.org/live.m3u8?session=temporary",
                     "attribution": "Query owner", "permission_note": "Permission for gateway only",
+                    "permission_evidence_url": "https://example.org/permission",
+                    "permission_reviewed_at": "2026-09-26T00:00:00+00:00",
+                    "removal_contact": "operator@example.org",
                 })
                 assert query_source.status_code == 201, query_source.text
                 query_id = query_source.json()["id"]
@@ -256,8 +268,98 @@ def test_admin_catalog_map_search_and_import(test_database_url) -> None:
 
                 audit = await call("GET", "/api/v1/admin/audit", token=token)
                 assert audit.status_code == 200 and audit.json()
+                changed_source = await call(
+                    "PATCH", f"/api/v1/admin/sources/{source_id}", token=token,
+                    json={"stream_url": "https://example.org/replaced.m3u8"},
+                )
+                assert changed_source.status_code == 200 and not changed_source.json()["is_approved"]
+                changed_camera = await call("GET", f"/api/v1/admin/cameras/{camera_id}", token=token)
+                assert not changed_camera.json()["is_published"]
+                assert changed_camera.json()["status"] == "unknown"
+                assert (await call("PATCH", f"/api/v1/admin/sources/{source_id}", token=token, json={"is_approved": True})).status_code == 200
+                assert not (await call("GET", f"/api/v1/admin/cameras/{camera_id}", token=token)).json()["is_published"]
                 assert (await call("POST", "/api/v1/admin/logout", token=token)).status_code == 204
                 assert (await call("GET", "/api/v1/admin/me", token=token)).status_code == 401
+        finally:
+            app.dependency_overrides.clear()
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_report_and_prolonged_outage(test_database_url, monkeypatch) -> None:
+    async def run() -> None:
+        engine = create_async_engine(test_database_url)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+
+        async def test_session():
+            async with factory() as session:
+                yield session
+
+        app.dependency_overrides[get_session] = test_session
+        monkeypatch.setattr("livemap.worker.get_session_factory", lambda: factory)
+        try:
+            async with factory() as session:
+                place = Place(
+                    slug="monitor-test", name="Monitor Test", city="Москва", region="Москва",
+                    category="street", geometry=point(37.6, 55.7), is_published=True,
+                )
+                source = Source(
+                    owner_name="Test operator", public_page_url="https://example.org/live",
+                    stream_url="https://example.org/live.m3u8", attribution="Test operator",
+                    permission_note="Test permission for integration test", is_approved=True,
+                )
+                session.add_all((place, source))
+                await session.flush()
+                camera = Camera(
+                    place_id=place.id, source_id=source.id, name="Test camera",
+                    playback_type="hls", status="unknown", is_published=True,
+                )
+                session.add(camera)
+                session.add(AdminUser(
+                    username="monitor-admin", password_hash=hash_password("test-password-123"), role="admin",
+                ))
+                await session.commit()
+                camera_id, source_id = camera.id, source.id
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                report = await client.post(
+                    f"/api/v1/cameras/{camera_id}/reports",
+                    json={"reason": "rights", "details": "Please review the permission for this camera."},
+                )
+                assert report.status_code == 201, report.text
+                login = await client.post("/api/v1/admin/login", json={
+                    "username": "monitor-admin", "password": "test-password-123",
+                })
+                token = login.json()["access_token"]
+                headers = {"Authorization": f"Bearer {token}"}
+                queue = await client.get("/api/v1/admin/reports", headers=headers)
+                assert queue.status_code == 200
+                assert any(item["id"] == report.json()["id"] for item in queue.json())
+                resolved = await client.patch(
+                    f"/api/v1/admin/reports/{report.json()['id']}", headers=headers,
+                    json={"resolution": "Camera removed pending permission review.", "unpublish_camera": True},
+                )
+                assert resolved.status_code == 200, resolved.text
+
+            async with factory() as session:
+                camera = await session.get(Camera, camera_id)
+                assert not camera.is_published and camera.unpublished_reason == "report"
+                camera.is_published = True
+                await session.commit()
+
+            due = DueCamera(camera_id, source_id, "hls", "https://example.org/live.m3u8", None, False)
+            for _ in range(12):
+                await save_check(due, ProbeResult("offline", "connection_failed", 100))
+            async with factory() as session:
+                camera = await session.get(Camera, camera_id)
+                assert not camera.is_published
+                assert camera.status == "offline"
+                assert camera.consecutive_failures == 12
+                assert camera.unpublished_reason == "prolonged_outage"
+                assert len((await session.execute(
+                    select(CameraCheck).where(CameraCheck.camera_id == camera_id)
+                )).scalars().all()) == 12
         finally:
             app.dependency_overrides.clear()
             await engine.dispose()

@@ -36,3 +36,4 @@ class RequestRateLimiter:
 
 search_limiter = RequestRateLimiter(30, 60, "rate_limited", "Search request limit exceeded")
 login_limiter = RequestRateLimiter(10, 60, "rate_limited", "Login request limit exceeded")
+report_limiter = RequestRateLimiter(3, 3600, "rate_limited", "Report limit exceeded")

@@ -1,0 +1,41 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [37.6208, 55.7539]},
+      "properties": {
+        "slug": "moscow-red-square",
+        "name": "Красная площадь",
+        "address": "Красная площадь",
+        "city": "Москва",
+        "region": "Москва",
+        "category": "square"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [49.1064, 55.7961]},
+      "properties": {
+        "slug": "kazan-kremlin",
+        "name": "Казанский кремль",
+        "address": "Кремлёвская улица",
+        "city": "Казань",
+        "region": "Татарстан",
+        "category": "landmark"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [131.8839, 43.1155]},
+      "properties": {
+        "slug": "vladivostok-center",
+        "name": "Центр Владивостока",
+        "address": "Светланская улица",
+        "city": "Владивосток",
+        "region": "Приморский край",
+        "category": "city"
+      }
+    }
+  ]
+}

@@ -10,7 +10,7 @@ from livemap.api.app import app
 from livemap.api.routers import health
 from livemap.core.config import ROOT_DIR, Config, DatabaseConfig
 from livemap.db.base import Base
-from livemap.db.models import Camera, Object
+from livemap.db.models import Camera, Place
 
 
 def request(path: str) -> httpx.Response:
@@ -50,9 +50,11 @@ def test_settings_load_root_env_and_async_driver() -> None:
 
 def test_models_are_registered_once_with_relationships() -> None:
     configure_mappers()
-    assert set(Base.metadata.tables) == {"objects", "cameras"}
-    assert Camera.__table__.c.object_id.foreign_keys
-    assert Object.cameras.property.back_populates == "object"
+    assert set(Base.metadata.tables) == {
+        "places", "sources", "cameras", "admin_users", "admin_sessions", "audit_events"
+    }
+    assert Camera.__table__.c.place_id.foreign_keys
+    assert Place.cameras.property.back_populates == "place"
 
 
 def test_liveness_and_error_format() -> None:
@@ -88,3 +90,20 @@ def test_readiness_reports_database_state(monkeypatch) -> None:
             "message": "Database is unavailable",
         }
     }
+
+
+def test_openapi_exposes_one_versioned_contract() -> None:
+    paths = app.openapi()["paths"]
+    assert {
+        "/api/v1/places",
+        "/api/v1/places/search",
+        "/api/v1/places/{place_id}",
+        "/api/v1/admin/login",
+        "/api/v1/admin/places",
+        "/api/v1/admin/cameras",
+        "/api/v1/admin/sources",
+        "/api/v1/admin/import/preview",
+        "/api/v1/admin/import/apply",
+    } <= set(paths)
+    assert paths["/api/v1/places"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    assert paths["/api/v1/admin/places"]["post"]["requestBody"]

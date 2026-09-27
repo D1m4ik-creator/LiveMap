@@ -104,6 +104,27 @@
     "embed_verified_at": "2026-09-26T12:31:00+03:00"
   },
   {
+    "slug": "omsk-lyubinsky-smotriomsk",
+    "name": "Любинский проспект",
+    "city": "Омск",
+    "region": "Омская область",
+    "address": "улица Ленина, 5",
+    "category": "street",
+    "coordinates": [73.374572, 54.986232],
+    "camera_name": "Любинский проспект — кандидат",
+    "playback_type": "iframe",
+    "owner_name": "smotriomsk.ru / Zegna Omsk",
+    "public_page_url": "https://smotriomsk.ru/cam13.htm",
+    "stream_url": "https://vkvideo.ru/video_ext.php?oid=-143491903&id=456240452&hash=bde71b469d8fa2a7&hd=3",
+    "embed_host": "vkvideo.ru",
+    "attribution": "smotriomsk.ru / Zegna Omsk / VK Video",
+    "permission_note": "Кандидат: 2026-09-27 на странице smotriomsk.ru VK-плеер показал живой кадр 856x480. Проект требует ссылку при использовании материалов в электронных СМИ или указание авторства в остальных случаях, но не подтверждает право LiveMap использовать камеру Zegna Omsk. Тот же iframe с localhost:5173 остался пустым. До отдельного разрешения и проверки с домена LiveMap не публиковать.",
+    "permission_evidence_url": "https://smotriomsk.ru/info.htm",
+    "permission_reviewed_at": "2026-09-27T14:05:00+03:00",
+    "removal_contact": "smotriomsk@mail.ru",
+    "publish_reviewed": false
+  },
+  {
     "slug": "vladivostok-golden-bridge-alliance",
     "name": "Золотой мост",
     "city": "Владивосток",

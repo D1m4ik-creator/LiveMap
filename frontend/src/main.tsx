@@ -1,55 +1,20 @@
-import { StrictMode, useEffect, useState } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CameraPlayer } from './CameraPlayer';
-import type { PlaceDetail, PublicCamera } from './types';
+import { BrowserRouter, Route, Routes } from 'react-router';
+import { MapPage } from './map/MapPage';
 import './style.css';
 
-function cameraCountLabel(count: number): string {
-  const lastTwo = count % 100;
-  const last = count % 10;
-  const noun = last === 1 && lastTwo !== 11 ? 'камера'
-    : last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14) ? 'камеры'
-      : 'камер';
-  return `${count} ${noun}`;
-}
+const AdminPage = lazy(() => import('./admin/AdminPage').then(({ AdminPage }) => ({ default: AdminPage })));
 
-function App() {
-  const placeId = new URLSearchParams(window.location.search).get('place');
-  const [place, setPlace] = useState<PlaceDetail | null>(null);
-  const [camera, setCamera] = useState<PublicCamera | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } } });
 
-  useEffect(() => {
-    if (!placeId || !/^\d+$/.test(placeId)) return;
-    const controller = new AbortController();
-    fetch(`/api/v1/places/${placeId}`, { signal: controller.signal })
-      .then((response) => { if (!response.ok) throw new Error('Место не найдено'); return response.json() as Promise<PlaceDetail>; })
-      .then(setPlace)
-      .catch((error: unknown) => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : 'Не удалось загрузить место'); });
-    return () => controller.abort();
-  }, [placeId]);
-
-  return (
-    <main className="page">
-      <div className="brand"><span className="brand-mark">L</span><span>LIVE<span className="brand-accent">MAP</span></span><span className="brand-caption">Камеры России</span></div>
-      <div className="layout">
-        <section className="intro"><span className="eyebrow">01 / ПРЯМО СЕЙЧАС</span><h1>Место ближе,<br /><em>чем кажется.</em></h1><p>Выберите камеру, чтобы увидеть город таким, какой он сейчас. Источники публикуются после проверки прав и доступности.</p><div className="orb" aria-hidden="true" /></section>
-        <section className="camera-list" aria-label="Камеры места">
-          <div className="list-top"><span>ТОЧКА НА КАРТЕ</span><span>{place?.city ?? 'РОССИЯ'}</span></div>
-          <h2>{place?.name ?? 'Прямые трансляции'}</h2>
-          <p className="list-subtitle">{place?.address ?? 'Откройте страницу с параметром ?place=ID, чтобы посмотреть камеры опубликованного места.'}</p>
-          {message && <p className="notice">{message}</p>}
-          {place?.cameras.map((item) => (
-            <button className="camera-row" key={item.id} onClick={() => setCamera(item)}>
-              <span className={`signal-dot ${item.status}`} /><span className="camera-name">{item.name}<small>{item.source_name}</small></span><span className="camera-status">{item.status === 'online' ? 'Смотреть' : item.availability_note ?? item.status}</span><span className="arrow">↗</span>
-            </button>
-          ))}
-          <div className="list-bottom">{place ? cameraCountLabel(place.cameras.length) : 'КАТАЛОГ В РАЗРАБОТКЕ'} <span>● LIVE MAP</span></div>
-        </section>
-      </div>
-      {camera && <div className="modal-backdrop" onClick={() => setCamera(null)}><div onClick={(event) => event.stopPropagation()}><CameraPlayer camera={camera} onClose={() => setCamera(null)} /></div></div>}
-    </main>
-  );
-}
-
-createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
+createRoot(document.getElementById('root')!).render(
+  <StrictMode><QueryClientProvider client={queryClient}><BrowserRouter><Suspense fallback={<div className="route-loading" role="status">Загружаем LiveMap…</div>}><Routes>
+    <Route path="/" element={<MapPage />} />
+    <Route path="/place/:placeId" element={<MapPage />} />
+    <Route path="/city/:city" element={<MapPage />} />
+    <Route path="/admin" element={<AdminPage />} />
+    <Route path="*" element={<MapPage />} />
+  </Routes></Suspense></BrowserRouter></QueryClientProvider></StrictMode>,
+);

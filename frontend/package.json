@@ -8,9 +8,13 @@
     "build": "tsc --noEmit && vite build"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.104.0",
     "hls.js": "^1.6.0",
+    "lucide-react": "^1.48.0",
+    "maplibre-gl": "^6.11.2",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-router": "^8.4.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

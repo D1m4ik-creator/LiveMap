@@ -1,0 +1,18 @@
+{
+  "map": { "path": "/api/v1/places", "methods": ["get"], "response": "MapResponse" },
+  "search": { "path": "/api/v1/places/search", "methods": ["get"], "response": "SearchResponse" },
+  "place": { "path": "/api/v1/places/{place_id}", "methods": ["get"], "response": "PlaceDetail" },
+  "adminLogin": { "path": "/api/v1/admin/login", "methods": ["post"], "response": "LoginOutput" },
+  "adminMe": { "path": "/api/v1/admin/me", "methods": ["get"], "response": "AdminUserOutput" },
+  "adminLogout": { "path": "/api/v1/admin/logout", "methods": ["post"] },
+  "adminPlaces": { "path": "/api/v1/admin/places", "methods": ["get", "post"], "response": "PlaceAdminOutput" },
+  "adminPlace": { "path": "/api/v1/admin/places/{place_id}", "methods": ["patch", "delete"], "response": "PlaceAdminOutput" },
+  "adminSources": { "path": "/api/v1/admin/sources", "methods": ["get", "post"], "response": "SourceAdminOutput" },
+  "adminSource": { "path": "/api/v1/admin/sources/{source_id}", "methods": ["patch", "delete"], "response": "SourceAdminOutput" },
+  "adminCameras": { "path": "/api/v1/admin/cameras", "methods": ["get", "post"], "response": "CameraAdminOutput" },
+  "adminCamera": { "path": "/api/v1/admin/cameras/{camera_id}", "methods": ["patch", "delete"], "response": "CameraAdminOutput" },
+  "adminCameraChecks": { "path": "/api/v1/admin/cameras/{camera_id}/checks", "methods": ["get"], "response": "CameraCheckOutput" },
+  "adminAudit": { "path": "/api/v1/admin/audit", "methods": ["get"], "response": "AuditOutput" },
+  "importPreview": { "path": "/api/v1/admin/import/preview", "methods": ["post"], "response": "ImportPreview" },
+  "importApply": { "path": "/api/v1/admin/import/apply", "methods": ["post"], "response": "ImportResult" }
+}

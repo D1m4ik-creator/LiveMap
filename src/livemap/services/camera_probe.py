@@ -147,11 +147,17 @@ class CameraProbe:
     async def __aexit__(self, *_exc: object) -> None:
         await self.client.close()
 
-    async def _fetch(self, url: str, limit: int, *, cors: bool, sample: bool = False, allow_query: bool = False) -> tuple[bytes, aiohttp.typedefs.LooseHeaders]:
+    async def _fetch(self, url: str, limit: int, *, cors: bool, sample: bool = False,
+                     allow_query: bool = False, referer: str | None = None) -> tuple[bytes, aiohttp.typedefs.LooseHeaders]:
         safe_https_url(url, allow_query=allow_query)
         try:
+            headers = {}
+            if cors:
+                headers["Origin"] = self.origin
+            if referer:
+                headers["Referer"] = referer
             async with self.client.get(
-                url, allow_redirects=False, headers={"Origin": self.origin} if cors else None
+                url, allow_redirects=False, headers=headers or None
             ) as response:
                 if 300 <= response.status < 400:
                     raise ProbeFailure("redirect_rejected")
@@ -195,7 +201,8 @@ class CameraProbe:
             if video_id is None:
                 raise ProbeFailure("invalid_provider_embed")
             body, _ = await self._fetch(
-                f"https://rutube.ru/api/play/options/{video_id}", MAX_PROVIDER_STATUS_BYTES, cors=False
+                f"https://rutube.ru/api/play/options/{video_id}", MAX_PROVIDER_STATUS_BYTES,
+                cors=False, referer=f"{self.origin}/",
             )
             try:
                 options = json.loads(body)

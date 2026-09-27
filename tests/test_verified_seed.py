@@ -1,7 +1,9 @@
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from livemap.core.config import ROOT_DIR
 from livemap.seed_verified import reviewed_embed
 
 
@@ -22,3 +24,9 @@ def test_reviewed_embed_requires_recent_public_rutube_evidence() -> None:
         reviewed_embed({**item, "public_page_url": "https://rutube.ru/live/video/other/"}, now)
     with pytest.raises(ValueError):
         reviewed_embed(item, now + timedelta(days=8))
+
+
+def test_provider_restricted_camera_is_not_seeded_as_verified() -> None:
+    candidates = json.loads((ROOT_DIR / "demo" / "camera_candidates.json").read_text(encoding="utf-8"))
+    restricted = next(item for item in candidates if item["slug"] == "novosibirsk-lenin-square-rutube")
+    assert restricted["publish_reviewed"] is False

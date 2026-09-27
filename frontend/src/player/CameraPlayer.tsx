@@ -1,6 +1,7 @@
 import Hls from 'hls.js';
+import { Maximize2, Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { PublicCamera } from './types';
+import type { PublicCamera } from '../types';
 
 type Props = { camera: PublicCamera; onClose: () => void };
 type PlayerState = 'loading' | 'playing' | 'no-signal' | 'error';
@@ -20,8 +21,10 @@ function safePlayback(camera: PublicCamera): URL | null {
 
 export function CameraPlayer({ camera, onClose }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<PlayerState>('loading');
   const [attempt, setAttempt] = useState(0);
+  const [muted, setMuted] = useState(true);
   const url = useMemo(() => safePlayback(camera), [camera]);
 
   useEffect(() => {
@@ -63,18 +66,22 @@ export function CameraPlayer({ camera, onClose }: Props) {
   const unavailableText = camera.availability_note ?? 'Для этой камеры нет доступной трансляции.';
 
   return (
-    <div className="player-shell" role="dialog" aria-modal="true" aria-label={`Камера ${camera.name}`}>
+    <div className="player-shell" aria-label={`Камера ${camera.name}`}>
       <header className="player-header">
         <div><span className="eyebrow">LIVE / КАМЕРА {String(camera.id).padStart(3, '0')}</span><h2>{camera.name}</h2></div>
-        <button className="icon-button" onClick={onClose} aria-label="Закрыть трансляцию">×</button>
+        <div className="player-actions">
+          {playable && camera.playback_type === 'hls' && <button onClick={() => setMuted((value) => !value)} aria-label={muted ? 'Включить звук' : 'Выключить звук'}>{muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>}
+          <button disabled={!playable} onClick={() => void stageRef.current?.requestFullscreen()} aria-label="Во весь экран"><Maximize2 size={15} /></button>
+          <button className="icon-button" onClick={onClose} aria-label="Закрыть трансляцию">×</button>
+        </div>
       </header>
-      <div className="player-stage">
-        {!playable && <div className="player-message"><span className="signal-dot muted" />{unavailableText}</div>}
+      <div className="player-stage" ref={stageRef}>
+        {!playable && <div className="player-message" role="status"><span className="signal-dot muted" />{unavailableText}</div>}
         {playable && camera.playback_type === 'hls' && (
           <>
-            <video ref={videoRef} controls autoPlay playsInline aria-label={camera.name} />
-            {state === 'loading' && <div className="player-overlay">Подключаемся к трансляции…</div>}
-            {(state === 'no-signal' || state === 'error') && <div className="player-overlay">{state === 'no-signal' ? 'Нет сигнала.' : 'Ошибка воспроизведения.'} <button onClick={() => setAttempt((value) => value + 1)}>Повторить</button></div>}
+            <video ref={videoRef} controls autoPlay muted={muted} playsInline aria-label={camera.name} />
+            {state === 'loading' && <div className="player-overlay" role="status">Подключаемся к трансляции…</div>}
+            {(state === 'no-signal' || state === 'error') && <div className="player-overlay" role="alert">{state === 'no-signal' ? 'Нет сигнала.' : 'Ошибка воспроизведения.'} <button onClick={() => setAttempt((value) => value + 1)}>Повторить</button></div>}
           </>
         )}
         {playable && camera.playback_type === 'iframe' && (
@@ -89,7 +96,7 @@ export function CameraPlayer({ camera, onClose }: Props) {
             onError={() => setState('error')}
           />
         )}
-        {playable && camera.playback_type === 'iframe' && state === 'error' && <div className="player-overlay">Не удалось открыть встраиваемый плеер. <button onClick={() => setAttempt((value) => value + 1)}>Повторить</button></div>}
+        {playable && camera.playback_type === 'iframe' && state === 'error' && <div className="player-overlay" role="alert">Не удалось открыть встраиваемый плеер. <button onClick={() => setAttempt((value) => value + 1)}>Повторить</button></div>}
       </div>
       <footer className="player-footer">
         <div><span className={`signal-dot ${camera.status}`} />{camera.status === 'online' ? 'Последняя проверка: доступна' : unavailableText}</div>

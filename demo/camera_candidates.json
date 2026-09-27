@@ -89,18 +89,18 @@
     "address": "Площадь Ленина, Красный проспект",
     "category": "square",
     "coordinates": [82.9201, 55.0300],
-    "camera_name": "Площадь Ленина онлайн",
+    "camera_name": "Площадь Ленина",
     "playback_type": "iframe",
     "owner_name": "LIVEPOINTS",
     "public_page_url": "https://rutube.ru/live/video/627e3e6cfcbdf991f5bc560182570dfc/",
     "stream_url": "https://rutube.ru/play/embed/627e3e6cfcbdf991f5bc560182570dfc",
     "embed_host": "rutube.ru",
     "attribution": "LIVEPOINTS / RUTUBE",
-    "permission_note": "RUTUBE разрешает встраивать открытые трансляции через свой iframe без копирования видеопотока. Публичный эфир канала LIVEPOINTS проверен в браузере 2026-09-26: видео 1280×720 воспроизводилось. При изменении доступности или правил RUTUBE источник следует снять с публикации.",
+    "permission_note": "Публичный эфир LIVEPOINTS доступен на RUTUBE, но 2026-09-26 провайдер вернул 404 для запроса плеера с Referer LiveMap и запретил просмотр на этом сайте. До повторного подтверждения встраивания источник остаётся кандидатом.",
     "permission_evidence_url": "https://rutube.ru/info/embed/",
     "permission_reviewed_at": "2026-09-26T12:31:00+03:00",
     "removal_contact": "help@rutube.ru",
-    "publish_reviewed": true,
+    "publish_reviewed": false,
     "embed_verified_at": "2026-09-26T12:31:00+03:00"
   }
 ]

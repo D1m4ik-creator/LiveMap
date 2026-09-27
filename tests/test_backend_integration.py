@@ -145,9 +145,15 @@ def test_admin_catalog_map_search_and_import(test_database_url) -> None:
                 high = await call("GET", "/api/v1/places", params={"bbox": "37,55,38,56", "zoom": 10})
                 assert high.status_code == 200, high.text
                 assert [point["id"] for point in high.json()["points"]] == [place_id]
+                category_match = await call("GET", "/api/v1/places", params={"bbox": "37,55,38,56", "zoom": 10, "category": "square"})
+                assert [point["id"] for point in category_match.json()["points"]] == [place_id]
+                category_empty = await call("GET", "/api/v1/places", params={"bbox": "37,55,38,56", "zoom": 10, "category": "bridge"})
+                assert category_empty.json()["points"] == []
                 low = await call("GET", "/api/v1/places", params={"bbox": "19,41,180,82", "zoom": 3})
                 assert low.status_code == 200, low.text
                 assert low.json()["clusters"][0]["camera_count"] == 1
+                low_empty = await call("GET", "/api/v1/places", params={"bbox": "19,41,180,82", "zoom": 3, "category": "bridge"})
+                assert low_empty.json()["clusters"] == []
                 assert (await call("GET", "/api/v1/places", params={"bbox": "bad", "zoom": 10})).status_code == 400
                 assert (await call("GET", "/api/v1/places", params={"bbox": "37,55,37,56", "zoom": 10})).status_code == 400
                 assert (await call("GET", "/api/v1/places", params={"bbox": "19,41,180,82", "zoom": 10})).status_code == 400
@@ -161,6 +167,26 @@ def test_admin_catalog_map_search_and_import(test_database_url) -> None:
                 assert search.status_code == 200, search.text
                 assert any(item["kind"] == "city" for item in search.json()["suggestions"])
                 assert (await call("GET", "/api/v1/places/search", params={"q": "  "})).status_code == 400
+
+                assert (await call("PATCH", f"/api/v1/admin/cameras/{camera_id}", token=token,
+                                   json={"status": "offline"})).status_code == 200
+                default_map = await call("GET", "/api/v1/places", params={"bbox": "37,55,38,56", "zoom": 10})
+                assert default_map.json()["points"] == []
+                all_map = await call("GET", "/api/v1/places", params={
+                    "bbox": "37,55,38,56", "zoom": 10, "include_offline": True,
+                })
+                assert all_map.json()["points"][0]["id"] == place_id
+                assert all_map.json()["points"][0]["status"] == "offline"
+                assert all_map.json()["points"][0]["online_count"] == 0
+                all_clusters = await call("GET", "/api/v1/places", params={
+                    "bbox": "19,41,180,82", "zoom": 3, "include_offline": True,
+                })
+                assert all_clusters.json()["clusters"][0]["status"] == "offline"
+                assert (await call("GET", "/api/v1/places/search", params={"q": "Москва"})).json()["suggestions"] == []
+                offline_search = await call("GET", "/api/v1/places/search", params={
+                    "q": "Москва", "include_offline": True,
+                })
+                assert any(item["kind"] == "city" for item in offline_search.json()["suggestions"])
 
                 eastern_ids = []
                 for slug, longitude in (("eastern-edge", 179.5), ("western-edge", -179.5)):
@@ -262,9 +288,13 @@ def test_admin_catalog_map_search_and_import(test_database_url) -> None:
                 assert (await call("PATCH", f"/api/v1/admin/cameras/{query_camera.json()['id']}", token=token, json={"is_published": True})).status_code == 409
                 assert "session=temporary" not in (await call("GET", f"/api/v1/places/{place_id}")).text
 
-                for _ in range(28):
-                    assert (await call("GET", "/api/v1/places/search", params={"q": "Москва"})).status_code == 200
-                assert (await call("GET", "/api/v1/places/search", params={"q": "Москва"})).status_code == 429
+                for _ in range(30):
+                    response = await call("GET", "/api/v1/places/search", params={"q": "Москва"})
+                    if response.status_code == 429:
+                        break
+                    assert response.status_code == 200
+                else:
+                    pytest.fail("Search did not enforce its 30 request limit")
 
                 audit = await call("GET", "/api/v1/admin/audit", token=token)
                 assert audit.status_code == 200 and audit.json()

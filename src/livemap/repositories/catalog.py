@@ -31,18 +31,15 @@ def approved_source(now: datetime):
     )
 
 
-def available_camera(now: datetime):
+def published_camera(now: datetime):
     return and_(
         Camera.is_published.is_(True),
-        Camera.status == "online",
-        Camera.last_checked_at >= now - timedelta(minutes=15),
         Camera.playback_type.in_(("hls", "iframe")),
         or_(
             Camera.playback_type == "hls",
             and_(
                 Camera.playback_type == "iframe",
                 Source.embed_host.is_not(None),
-                Camera.embed_verified_at >= now - timedelta(days=7),
             ),
         ),
         or_(Camera.valid_until.is_(None), Camera.valid_until > now),
@@ -61,15 +58,31 @@ def available_camera(now: datetime):
     )
 
 
-def available_count(now: datetime):
+def available_camera(now: datetime):
+    return and_(
+        published_camera(now),
+        Camera.status == "online",
+        Camera.last_checked_at >= now - timedelta(minutes=15),
+        or_(
+            Camera.playback_type == "hls",
+            Camera.embed_verified_at >= now - timedelta(days=7),
+        ),
+    )
+
+
+def camera_count(now: datetime, *, include_offline: bool):
     return (
         select(func.count(Camera.id))
         .select_from(Camera)
         .join(Source, Source.id == Camera.source_id)
-        .where(Camera.place_id == Place.id, available_camera(now))
+        .where(Camera.place_id == Place.id, published_camera(now) if include_offline else available_camera(now))
         .correlate(Place)
         .scalar_subquery()
     )
+
+
+def available_count(now: datetime):
+    return camera_count(now, include_offline=False)
 
 
 def in_bbox(bbox: BBox):
@@ -87,16 +100,20 @@ def in_bbox(bbox: BBox):
     )
 
 
-async def map_items(session: AsyncSession, bbox: BBox, zoom: int) -> MapResponse:
+async def map_items(session: AsyncSession, bbox: BBox, zoom: int, category: str | None = None,
+                    include_offline: bool = False) -> MapResponse:
     now = datetime.now(timezone.utc)
-    count = available_count(now)
+    count = camera_count(now, include_offline=include_offline)
+    online_count = available_count(now)
     longitude = func.ST_X(Place.geometry)
     latitude = func.ST_Y(Place.geometry)
     where = (Place.is_published.is_(True), in_bbox(bbox), count > 0)
+    if category:
+        where += (Place.category == category,)
 
     if zoom >= 9:
         query = (
-            select(Place.id, Place.slug, Place.name, Place.city, Place.category, longitude, latitude, count)
+            select(Place.id, Place.slug, Place.name, Place.city, Place.category, longitude, latitude, count, online_count)
             .where(*where)
             .order_by(Place.id)
             .limit(MAX_MAP_ITEMS + 1)
@@ -106,6 +123,7 @@ async def map_items(session: AsyncSession, bbox: BBox, zoom: int) -> MapResponse
             MapPoint(
                 id=row[0], slug=row[1], name=row[2], city=row[3], category=row[4],
                 coordinates=(float(row[5]), float(row[6])), camera_count=row[7],
+                online_count=row[8], status="online" if row[8] > 0 else "offline",
             )
             for row in rows[:MAX_MAP_ITEMS]
         ]
@@ -115,7 +133,8 @@ async def map_items(session: AsyncSession, bbox: BBox, zoom: int) -> MapResponse
     gx = func.floor((longitude + 180) / cell)
     gy = func.floor((latitude + 90) / cell)
     query = (
-        select(gx, gy, func.avg(longitude), func.avg(latitude), func.count(Place.id), func.sum(count))
+        select(gx, gy, func.avg(longitude), func.avg(latitude), func.count(Place.id),
+               func.sum(count), func.sum(online_count))
         .where(*where)
         .group_by(gx, gy)
         .order_by(gx, gy)
@@ -126,7 +145,8 @@ async def map_items(session: AsyncSession, bbox: BBox, zoom: int) -> MapResponse
         MapCluster(
             id=f"{zoom}:{int(row[0])}:{int(row[1])}",
             coordinates=(float(row[2]), float(row[3])),
-            place_count=row[4], camera_count=int(row[5]),
+            place_count=row[4], camera_count=int(row[5]), online_count=int(row[6]),
+            status="online" if row[6] > 0 else "offline",
         )
         for row in rows[:MAX_MAP_ITEMS]
     ]
@@ -211,11 +231,12 @@ async def place_detail(session: AsyncSession, place_id: int) -> PlaceDetail | No
     )
 
 
-async def search_places(session: AsyncSession, term: str, limit: int) -> SearchResponse:
+async def search_places(session: AsyncSession, term: str, limit: int,
+                        include_offline: bool = False) -> SearchResponse:
     now = datetime.now(timezone.utc)
     escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     pattern = f"%{escaped}%"
-    count = available_count(now)
+    count = camera_count(now, include_offline=include_offline)
     query = (
         select(
             Place.id, Place.name, Place.address, Place.city, Place.region,

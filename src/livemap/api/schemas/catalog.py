@@ -12,6 +12,8 @@ class MapPoint(BaseModel):
     category: str
     coordinates: tuple[float, float]
     camera_count: int
+    online_count: int
+    status: Literal["online", "offline"]
 
 
 class MapCluster(BaseModel):
@@ -19,6 +21,8 @@ class MapCluster(BaseModel):
     coordinates: tuple[float, float]
     place_count: int
     camera_count: int
+    online_count: int
+    status: Literal["online", "offline"]
 
 
 class MapResponse(BaseModel):

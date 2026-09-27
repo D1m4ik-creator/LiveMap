@@ -1,9 +1,10 @@
 import socket
+import asyncio
 
 import pytest
 
 from livemap.services.camera_probe import (
-    ProbeFailure, cors_allowed, first_playlist_uri, frame_policy_allows,
+    CameraProbe, ProbeFailure, cors_allowed, first_playlist_uri, frame_policy_allows,
     public_dns_answers, rutube_embed_id, rutube_live_available, safe_https_url,
 )
 from livemap.services.source_rules import public_iframe_query_allowed
@@ -66,3 +67,27 @@ def test_rutube_live_status_requires_public_active_broadcast() -> None:
     assert not rutube_live_available({**active, "live_streams": {"hls": []}})
     assert not rutube_live_available({**active, "acl_access": {"allowed": False}})
     assert not rutube_live_available({**active, "stream_type": "video"})
+
+
+def test_rutube_probe_checks_embed_for_public_origin(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_fetch(self, url, _limit, *, cors, sample=False, allow_query=False, referer=None):
+        assert not cors
+        if "/play/embed/" in url:
+            assert referer is None
+            return b"", {}
+        assert "/api/play/options/" in url
+        assert referer == "http://localhost:5173/"
+        raise ProbeFailure("http_error")
+
+    monkeypatch.setattr(CameraProbe, "_fetch", fake_fetch)
+
+    async def run() -> None:
+        async with CameraProbe("http://localhost:5173") as probe:
+            result = await probe.check(
+                "iframe", "https://rutube.ru/play/embed/627e3e6cfcbdf991f5bc560182570dfc",
+                embed_host="rutube.ru", embed_verified=True,
+            )
+            assert result.status == "offline"
+            assert result.code == "http_error"
+
+    asyncio.run(run())

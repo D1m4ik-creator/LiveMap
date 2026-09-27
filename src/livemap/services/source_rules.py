@@ -9,6 +9,8 @@ from livemap.db.models import Camera, Source
 SENSITIVE_QUERY_KEYS = {"token", "key", "api_key", "apikey", "password", "pass", "secret", "signature", "sig", "auth"}
 IVIDEON_EMBED_HOST = "open.ivideon.com"
 IVIDEON_EMBED_KEYS = {"camera", "server", "lang", "width", "height"}
+IPEYE_EMBED_HOST = "ipeye.ru"
+IPEYE_EMBED_KEYS = {"iframe_player", "dev", "autoplay", "archive"}
 
 
 def validate_url(value: str, schemes: set[str]) -> str:
@@ -58,18 +60,30 @@ def validate_source_metadata(source: Source) -> None:
 
 
 def public_iframe_query_allowed(value: str, embed_host: str | None) -> bool:
-    """Allow known Ivideon iframe identifiers, never an arbitrary query string."""
+    """Allow only documented public player identifiers, never arbitrary queries."""
     parsed = urlsplit(value)
     if not parsed.query:
         return True
-    if embed_host != IVIDEON_EMBED_HOST or parsed.hostname != embed_host or parsed.path != "/embed/v3/":
+    if parsed.scheme != "https" or parsed.hostname != embed_host or parsed.port is not None:
         return False
     pairs = parse_qsl(parsed.query, keep_blank_values=True)
     keys = [key for key, _ in pairs]
     values = dict(pairs)
+    if len(pairs) != len(set(keys)):
+        return False
+    if embed_host == IPEYE_EMBED_HOST and parsed.path == "/ipeye_service/api/iframe.php":
+        dev = values.get("dev", "")
+        return (
+            set(keys) == IPEYE_EMBED_KEYS
+            and values.get("iframe_player") == "1"
+            and len(dev) == 32 and all(char in "0123456789abcdef" for char in dev)
+            and values.get("autoplay") == "0"
+            and values.get("archive") == "1"
+        )
+    if embed_host != IVIDEON_EMBED_HOST or parsed.path != "/embed/v3/":
+        return False
     return (
-        len(pairs) == len(set(keys))
-        and set(keys) <= IVIDEON_EMBED_KEYS
+        set(keys) <= IVIDEON_EMBED_KEYS
         and "camera" in values and values["camera"].isdigit()
         and "server" in values and len(values["server"]) <= 80
         and values["server"].replace("-", "").isalnum()

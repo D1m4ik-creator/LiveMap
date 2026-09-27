@@ -19,13 +19,22 @@ async def seed() -> int:
     count = 0
     async with get_session_factory()() as session:
         for item in candidates:
-            existing = (await session.execute(select(Place).where(Place.slug == item["slug"]))).scalar_one_or_none()
+            place = (await session.execute(select(Place).where(Place.slug == item["slug"]))).scalar_one_or_none()
+            if place is None:
+                place = Place(
+                    slug=item["slug"], name=item["name"], city=item["city"], region=item["region"],
+                    address=item["address"], category=item["category"],
+                    geometry=point(*item["coordinates"]), is_published=False,
+                )
+                session.add(place)
+                await session.flush()
+            existing = (await session.execute(
+                select(Camera, Source).join(Source, Source.id == Camera.source_id)
+                .where(Camera.place_id == place.id, Camera.name == item["camera_name"])
+                .limit(1)
+            )).one_or_none()
             if existing is not None:
-                source = (await session.execute(
-                    select(Source).join(Camera, Camera.source_id == Source.id)
-                    .where(Camera.place_id == existing.id, Source.owner_name == item["owner_name"])
-                    .limit(1)
-                )).scalar_one_or_none()
+                _camera, source = existing
                 if source and not source.is_approved:
                     if item["removal_contact"] and not source.removal_contact:
                         source.removal_contact = item["removal_contact"]
@@ -35,11 +44,6 @@ async def seed() -> int:
                         source.permission_note = item["permission_note"]
                         validate_source_metadata(source)
                 continue
-            place = Place(
-                slug=item["slug"], name=item["name"], city=item["city"], region=item["region"],
-                address=item["address"], category=item["category"],
-                geometry=point(*item["coordinates"]), is_published=False,
-            )
             source = Source(
                 owner_name=item["owner_name"], public_page_url=item["public_page_url"],
                 stream_url=item["stream_url"], embed_host=item["embed_host"],
@@ -49,7 +53,7 @@ async def seed() -> int:
                 removal_contact=item["removal_contact"], is_approved=False,
             )
             validate_source_metadata(source)
-            session.add_all((place, source))
+            session.add(source)
             await session.flush()
             session.add(Camera(
                 place_id=place.id, source_id=source.id, name=item["camera_name"],

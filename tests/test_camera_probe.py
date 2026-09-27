@@ -42,6 +42,20 @@ def test_only_known_public_iframe_query_is_allowed() -> None:
         assert not public_iframe_query_allowed(unsafe, "open.ivideon.com")
 
 
+def test_ipeye_public_player_rejects_extra_or_changed_parameters() -> None:
+    url = "https://ipeye.ru/ipeye_service/api/iframe.php?iframe_player=1&dev=243eafa8f63049408a996398bec79228&autoplay=0&archive=1"
+    assert public_iframe_query_allowed(url, "ipeye.ru")
+    for unsafe in (
+        url + "&token=secret",
+        url.replace("autoplay=0", "autoplay=1"),
+        url.replace("archive=1", "archive=0"),
+        url.replace("dev=243eafa8f63049408a996398bec79228", "dev=not-a-public-id"),
+        url.replace("https://ipeye.ru", "https://ipeye.ru:8443"),
+        url.replace("iframe.php", "private.php"),
+    ):
+        assert not public_iframe_query_allowed(unsafe, "ipeye.ru")
+
+
 def test_playlist_and_browser_headers() -> None:
     assert first_playlist_uri("#EXTM3U\n#EXTINF:6,\nsegment.ts\n") == "segment.ts"
     with pytest.raises(ProbeFailure, match="invalid_manifest"):

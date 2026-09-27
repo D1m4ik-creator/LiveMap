@@ -30,3 +30,14 @@ def test_provider_restricted_camera_is_not_seeded_as_verified() -> None:
     candidates = json.loads((ROOT_DIR / "demo" / "camera_candidates.json").read_text(encoding="utf-8"))
     restricted = next(item for item in candidates if item["slug"] == "novosibirsk-lenin-square-rutube")
     assert restricted["publish_reviewed"] is False
+
+
+def test_reviewed_ipeye_embed_is_bound_to_public_owner_page_and_camera() -> None:
+    candidates = json.loads((ROOT_DIR / "demo" / "camera_candidates.json").read_text(encoding="utf-8"))
+    item = next(item for item in candidates if item["camera_name"] == "Панорама экопарка")
+    now = datetime(2026, 9, 27, 20, 10, tzinfo=timezone.utc)
+    assert reviewed_embed(item, now) == datetime.fromisoformat(item["embed_verified_at"])
+    with pytest.raises(ValueError):
+        reviewed_embed({**item, "stream_url": item["stream_url"].replace("243eafa8", "75085eee")}, now)
+    with pytest.raises(ValueError):
+        reviewed_embed({**item, "public_page_url": "https://www.geocam.ru/online/dolinanarzanov/"}, now)

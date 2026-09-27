@@ -1,4 +1,4 @@
-"""Publish the reviewed RUTUBE starter streams after a fresh live probe.
+"""Publish reviewed public embeds after a fresh live probe.
 
 The browser verification time is stored in the committed catalog. Re-running this
 command cannot extend it or republish a camera removed after a complaint.
@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime, timedelta, timezone
+from urllib.parse import parse_qs, urlsplit
 
 from sqlalchemy import func, select
 
@@ -16,7 +17,15 @@ from livemap.core.config import ROOT_DIR, get_settings
 from livemap.core.engine import close_engine, get_session_factory
 from livemap.db.models import AuditEvent, Camera, CameraCheck, CameraReport, Place, Source
 from livemap.services.camera_probe import CameraProbe, rutube_embed_id
-from livemap.services.source_rules import ensure_camera_publishable, validate_source_metadata
+from livemap.services.source_rules import (
+    ensure_camera_publishable, public_iframe_query_allowed, validate_source_metadata,
+)
+
+
+REVIEWED_IPEYE_CAMERAS = {
+    "Панорама экопарка": "243eafa8f63049408a996398bec79228",
+    "Парковка экопарка": "75085eeed28446fd9eeb2fbb421c5d20",
+}
 
 
 def reviewed_embed(item: dict, now: datetime) -> datetime:
@@ -26,13 +35,26 @@ def reviewed_embed(item: dict, now: datetime) -> datetime:
     if verified_at.tzinfo is None or not now - timedelta(days=7) < verified_at <= now + timedelta(minutes=5):
         raise ValueError("Browser verification is missing or older than seven days")
     video_id = rutube_embed_id(item["stream_url"])
-    if (
-        video_id is None
-        or item["embed_host"] != "rutube.ru"
-        or item["public_page_url"] != f"https://rutube.ru/live/video/{video_id}/"
-        or item["permission_evidence_url"] != "https://rutube.ru/info/embed/"
-    ):
-        raise ValueError("Reviewed source must use the public RUTUBE embed and its policy")
+    if video_id is not None:
+        if (
+            item["embed_host"] != "rutube.ru"
+            or item["public_page_url"] != f"https://rutube.ru/live/video/{video_id}/"
+            or item["permission_evidence_url"] != "https://rutube.ru/info/embed/"
+        ):
+            raise ValueError("Reviewed source must use the public RUTUBE embed and its policy")
+    elif item.get("slug") == "narzan-valley-ecopark":
+        parsed = urlsplit(item["stream_url"])
+        dev = parse_qs(parsed.query).get("dev", [None])
+        if (
+            item["embed_host"] != "ipeye.ru"
+            or not public_iframe_query_allowed(item["stream_url"], "ipeye.ru")
+            or dev != [REVIEWED_IPEYE_CAMERAS.get(item["camera_name"])]
+            or item["public_page_url"] != "https://dolinanarzanov.ru/new-online"
+            or item["permission_evidence_url"] != "https://www.ipeye.ru/translyaciya-video-na-sajt"
+        ):
+            raise ValueError("Reviewed source must use the owner's public IPEYE embed")
+    else:
+        raise ValueError("Reviewed source must have explicit provider evidence")
     return verified_at
 
 
@@ -64,7 +86,7 @@ async def publish() -> int:
             camera, source = record
             if source.is_approved and camera.is_published and place.is_published:
                 continue
-            if source.is_approved or camera.is_published or place.is_published:
+            if source.is_approved or camera.is_published:
                 raise ValueError(f"Camera {item['slug']} was changed after review; manual action required")
             if (await session.execute(
                 select(CameraReport.id).where(CameraReport.camera_id == camera.id, CameraReport.status == "open")
@@ -120,7 +142,7 @@ async def publish() -> int:
             ):
                 session.add(AuditEvent(
                     actor_id=None, action=action, entity_type=entity_type, entity_id=entity_id,
-                    summary=f"Reviewed RUTUBE catalog {item['slug']} published from committed evidence",
+                    summary=f"Reviewed public embed {item['slug']} published from committed evidence",
                 ))
             published += 1
         await session.commit()

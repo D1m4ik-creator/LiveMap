@@ -16,7 +16,8 @@ import { mapProvider } from './provider';
 const categories = [
   { value: '', label: 'Все места' }, { value: 'bridge', label: 'Мосты' },
   { value: 'square', label: 'Площади' }, { value: 'street', label: 'Улицы' },
-  { value: 'park', label: 'Парки' }, { value: 'station', label: 'Вокзалы' },
+  { value: 'park', label: 'Парки' }, { value: 'nature', label: 'Природа' },
+  { value: 'station', label: 'Вокзалы' },
 ];
 
 function validCoordinate(value: string | null, min: number, max: number): number | null {

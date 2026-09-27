@@ -53,6 +53,14 @@ def reviewed_embed(item: dict, now: datetime) -> datetime:
             or item["permission_evidence_url"] != "https://www.ipeye.ru/translyaciya-video-na-sajt"
         ):
             raise ValueError("Reviewed source must use the owner's public IPEYE embed")
+    elif item.get("slug") == "astrakhan-guzhvina-10":
+        if (
+            item["stream_url"] != "https://dvr.astrakhan.ru/guba-10-hd-1/embed.html"
+            or item["embed_host"] != "dvr.astrakhan.ru"
+            or item["public_page_url"] != "https://live.astrakhan.ru/map/"
+            or item["permission_evidence_url"] != "https://live.astrakhan.ru/catalog/?cat_id=114"
+        ):
+            raise ValueError("Reviewed source must use the operator's public Astrakhan embed")
     else:
         raise ValueError("Reviewed source must have explicit provider evidence")
     return verified_at

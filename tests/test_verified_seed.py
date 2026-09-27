@@ -41,3 +41,14 @@ def test_reviewed_ipeye_embed_is_bound_to_public_owner_page_and_camera() -> None
         reviewed_embed({**item, "stream_url": item["stream_url"].replace("243eafa8", "75085eee")}, now)
     with pytest.raises(ValueError):
         reviewed_embed({**item, "public_page_url": "https://www.geocam.ru/online/dolinanarzanov/"}, now)
+
+
+def test_astrakhan_publication_uses_only_reviewed_operator_embed() -> None:
+    candidates = json.loads((ROOT_DIR / "demo" / "camera_candidates.json").read_text(encoding="utf-8"))
+    item = next(item for item in candidates if item["slug"] == "astrakhan-guzhvina-10")
+    now = datetime(2026, 9, 27, 21, 5, tzinfo=timezone.utc)
+    assert reviewed_embed(item, now) == datetime.fromisoformat(item["embed_verified_at"])
+    with pytest.raises(ValueError):
+        reviewed_embed({**item, "stream_url": "https://dvr.astrakhan.ru/other/embed.html"}, now)
+    with pytest.raises(ValueError):
+        reviewed_embed({**item, "permission_evidence_url": "https://www.geocam.ru/"}, now)

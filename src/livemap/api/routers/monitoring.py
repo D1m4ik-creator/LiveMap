@@ -1,7 +1,8 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy import select
+from pydantic import BaseModel
+from sqlalchemy import func, select
 
 from livemap.api.errors import APIError, ErrorResponse
 from livemap.api.schemas.monitoring import CameraCheckOutput, ReportInput, ReportOutput, ResolveReportInput
@@ -14,6 +15,45 @@ from livemap.services.rate_limit import report_limiter
 
 public_router = APIRouter(prefix="/cameras", tags=["camera-reports"], responses={404: {"model": ErrorResponse}, 429: {"model": ErrorResponse}})
 admin_router = APIRouter(prefix="/admin", tags=["admin-monitoring"], responses={401: {"model": ErrorResponse}, 403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}})
+
+
+class OperationsOutput(BaseModel):
+    published_cameras: int
+    online_cameras: int
+    offline_cameras: int
+    stale_cameras: int
+    open_reports: int
+    latest_check_at: datetime | None
+    worker_stale: bool
+
+
+@admin_router.get("/operations", response_model=OperationsOutput)
+async def operations(session: SessionDep, _actor: AdminUser = Depends(require_admin)) -> OperationsOutput:
+    now = datetime.now(timezone.utc)
+    rows = (await session.execute(
+        select(Camera.status, func.count(Camera.id))
+        .where(Camera.is_published.is_(True)).group_by(Camera.status)
+    )).all()
+    statuses = {status: count for status, count in rows}
+    stale_cameras = (await session.scalar(
+        select(func.count(Camera.id)).where(
+            Camera.is_published.is_(True),
+            (Camera.last_checked_at.is_(None) | (Camera.last_checked_at < now - timedelta(minutes=15))),
+        )
+    )) or 0
+    open_reports = (await session.scalar(
+        select(func.count(CameraReport.id)).where(CameraReport.status == "open")
+    )) or 0
+    latest_check_at = await session.scalar(select(func.max(CameraCheck.checked_at)))
+    return OperationsOutput(
+        published_cameras=sum(statuses.values()),
+        online_cameras=statuses.get("online", 0),
+        offline_cameras=statuses.get("offline", 0),
+        stale_cameras=stale_cameras,
+        open_reports=open_reports,
+        latest_check_at=latest_check_at,
+        worker_stale=latest_check_at is None or latest_check_at < now - timedelta(minutes=15),
+    )
 
 
 @public_router.post("/{camera_id}/reports", response_model=ReportOutput, status_code=201)

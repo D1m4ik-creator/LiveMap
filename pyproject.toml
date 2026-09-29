@@ -17,8 +17,9 @@ dependencies = [
     "pydantic>=2.13.4",
     "pydantic-core>=2.46.4",
     "pydantic-settings>=2.15.0",
+    "prometheus-client>=0.22.0",
     "shapely>=2.1.2",
-    "sqlalchemy>=2.0.52",
+    "sqlalchemy[asyncio]>=2.0.52",
     "uvicorn>=0.41.0",
 ]
 

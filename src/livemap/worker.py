@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -13,6 +15,8 @@ from livemap.core.config import get_settings
 from livemap.core.engine import close_engine, get_session_factory
 from livemap.db.models import AuditEvent, Camera, CameraCheck, Source
 from livemap.services.camera_probe import CameraProbe, ProbeResult
+
+logger = logging.getLogger("livemap.worker")
 
 
 @dataclass(frozen=True)
@@ -120,24 +124,37 @@ async def save_check(due: DueCamera, result: ProbeResult) -> None:
             code=result.code, duration_ms=result.duration_ms,
         ))
         await session.commit()
+        logger.info(json.dumps({"event": "camera_check", "camera_id": due.id,
+                                "status": result.status, "code": result.code,
+                                "duration_ms": result.duration_ms}))
+
+
+async def check_due(probe: CameraProbe, camera: DueCamera) -> None:
+    try:
+        result = await probe.check(
+            camera.playback_type, camera.url,
+            embed_host=camera.embed_host, embed_verified=camera.embed_verified,
+        )
+    except Exception as exc:
+        logger.error(json.dumps({"event": "camera_probe_error", "camera_id": camera.id,
+                                 "exception_type": type(exc).__name__}))
+        result = ProbeResult("unknown", "probe_error", 0)
+    await save_check(camera, result)
 
 
 async def run_once() -> int:
     settings = get_settings()
-    await unpublish_expired()
+    unpublished = await unpublish_expired()
+    if unpublished:
+        logger.warning(json.dumps({"event": "expired_cameras_unpublished", "count": unpublished}))
     concurrency = max(1, min(settings.camera_check_concurrency, 16))
     interval = max(60, settings.camera_check_interval_seconds)
     due = await claim_due(concurrency, interval)
     if not due:
         return 0
     async with CameraProbe(settings.public_origin) as probe:
-        async def check(camera: DueCamera) -> None:
-            result = await probe.check(
-                camera.playback_type, camera.url,
-                embed_host=camera.embed_host, embed_verified=camera.embed_verified,
-            )
-            await save_check(camera, result)
-        await asyncio.gather(*(check(camera) for camera in due))
+        await asyncio.gather(*(check_due(probe, camera) for camera in due))
+    logger.info(json.dumps({"event": "camera_check_batch", "count": len(due)}))
     return len(due)
 
 

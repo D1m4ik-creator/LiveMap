@@ -13,6 +13,9 @@ wheels/
 frontend/node_modules/
 frontend/dist/
 .playwright-cli/
+.playwright-browsers/
+frontend/test-results/
+frontend/playwright-report/
 venv/
 env/
 ENV/
@@ -37,6 +40,9 @@ htmlcov/
 *.log
 logs/
 instance/
+backups/
+.uv-cache/
+.npm-cache/
 *.sqlite3
 *.db
 

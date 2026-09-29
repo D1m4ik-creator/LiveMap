@@ -1,0 +1,50 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_DB: livemap
+          POSTGRES_USER: livemap
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U livemap -d livemap"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      POSTGRES_DB: livemap
+      POSTGRES_USER: livemap
+      POSTGRES_PASSWORD: ci-only-password
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: 5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install Python dependencies
+        run: pip install uv && uv sync --frozen
+      - name: Backend and migrations
+        run: uv run alembic upgrade head && uv run alembic check && uv run pytest -q
+      - name: Frontend build
+        working-directory: frontend
+        run: npm ci
+      - name: Browser journey
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium && npm run test:e2e
+      - name: Container configuration
+        run: cp .env.example .env && docker compose --profile app config --quiet

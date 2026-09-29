@@ -2,6 +2,7 @@ import asyncio
 import os
 import subprocess
 import sys
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import httpx
@@ -371,6 +372,10 @@ def test_report_and_prolonged_outage(test_database_url, monkeypatch) -> None:
                     json={"resolution": "Camera removed pending permission review.", "unpublish_camera": True},
                 )
                 assert resolved.status_code == 200, resolved.text
+                operations = await client.get("/api/v1/admin/operations", headers=headers)
+                assert operations.status_code == 200, operations.text
+                assert operations.json()["open_reports"] == 0
+                assert operations.json()["worker_stale"] is True
 
             async with factory() as session:
                 camera = await session.get(Camera, camera_id)
@@ -390,6 +395,60 @@ def test_report_and_prolonged_outage(test_database_url, monkeypatch) -> None:
                 assert len((await session.execute(
                     select(CameraCheck).where(CameraCheck.camera_id == camera_id)
                 )).scalars().all()) == 12
+        finally:
+            app.dependency_overrides.clear()
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_dense_map_is_bounded(test_database_url) -> None:
+    async def run() -> None:
+        engine = create_async_engine(test_database_url)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+
+        async def test_session():
+            async with factory() as session:
+                yield session
+
+        app.dependency_overrides[get_session] = test_session
+        try:
+            now = datetime.now(timezone.utc)
+            async with factory() as session:
+                source = Source(
+                    owner_name="Load test", public_page_url="https://example.org/load",
+                    stream_url="https://example.org/load.m3u8", attribution="Load test",
+                    permission_note="Isolated synthetic test", is_approved=True,
+                    permission_evidence_url="https://example.org/permission",
+                    permission_reviewed_at=now, removal_contact="operator@example.org",
+                )
+                session.add(source)
+                await session.flush()
+                for index in range(550):
+                    place = Place(
+                        slug=f"dense-{index}", name=f"Dense place {index}",
+                        city="Москва", region="Москва", category="square",
+                        geometry=point(37.5 + (index % 25) * 0.001,
+                                       55.7 + (index // 25) * 0.001),
+                        is_published=True,
+                    )
+                    session.add(place)
+                    await session.flush()
+                    session.add(Camera(
+                        place_id=place.id, source_id=source.id, name=f"Camera {index}",
+                        playback_type="hls", status="online", is_published=True,
+                        last_checked_at=now,
+                    ))
+                await session.commit()
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get("/api/v1/places", params={"bbox": "37,55,38,56", "zoom": 10})
+                assert response.status_code == 200, response.text
+                assert len(response.json()["points"]) == 500
+                assert response.json()["truncated"] is True
+                assert len(response.content) < 250_000
+                clusters = await client.get("/api/v1/places", params={"bbox": "19,41,180,82", "zoom": 3})
+                assert clusters.status_code == 200
+                assert sum(item["place_count"] for item in clusters.json()["clusters"]) >= 550
         finally:
             app.dependency_overrides.clear()
             await engine.dispose()

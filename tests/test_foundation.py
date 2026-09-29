@@ -70,6 +70,17 @@ def test_liveness_and_error_format() -> None:
     }
 
 
+def test_request_observability_does_not_log_query_secrets(caplog) -> None:
+    with caplog.at_level("INFO", logger="livemap.requests"):
+        response = request("/api/v1/health/live?token=DO_NOT_LOG_THIS")
+    assert response.headers["x-request-id"]
+    assert '"route": "/health/live"' in caplog.text
+    assert "DO_NOT_LOG_THIS" not in caplog.text
+    metrics = request("/internal/metrics")
+    assert metrics.status_code == 200
+    assert "livemap_http_requests_total" in metrics.text
+
+
 def test_readiness_reports_database_state(monkeypatch) -> None:
     async def ready() -> None:
         return None

@@ -1,0 +1,13 @@
+.git
+.venv
+.pytest_cache
+__pycache__
+.env
+frontend
+tests
+docs
+demo
+.uv-cache
+.npm-cache
+.playwright-browsers
+backups

@@ -1,0 +1,28 @@
+{$SITE_ADDRESS} {
+    encode zstd gzip
+
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        X-Frame-Options DENY
+        Permissions-Policy "camera=(), microphone=(), geolocation=(self)"
+        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https:; media-src 'self' blob: https:; frame-src https://ipeye.ru https://open.ivideon.com https://rutube.ru; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+    }
+
+    @static path /assets/*
+    header @static Cache-Control "public, max-age=31536000, immutable"
+
+    handle /api/* {
+        reverse_proxy api:8000
+    }
+
+    handle /internal/* {
+        respond "Not Found" 404
+    }
+
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
+}

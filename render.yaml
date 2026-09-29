@@ -1,13 +1,20 @@
 services:
   - type: web
     name: livemap-demo
-    runtime: docker
+    runtime: python
     plan: free
     region: frankfurt
     branch: codex/livemap-foundation
-    dockerfilePath: ./Dockerfile.render
+    buildCommand: sh scripts/render-build.sh
+    startCommand: sh scripts/render-start.sh
     healthCheckPath: /api/v1/health/ready
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.15"
+      - key: UV_VERSION
+        value: "0.12.5"
+      - key: NODE_VERSION
+        value: "22"
       - key: POSTGRES_USER
         sync: false
       - key: POSTGRES_PASSWORD
@@ -16,9 +23,19 @@ services:
         sync: false
       - key: POSTGRES_HOST
         sync: false
+      - key: DATABASE_SCHEMA
+        value: livemap
+      - key: POSTGRES_MIGRATION_USER
+        sync: false
+      - key: POSTGRES_MIGRATION_PASSWORD
+        sync: false
       - key: POSTGRES_PORT
         value: "5432"
       - key: POSTGRES_SSL
+        value: "true"
+      - key: POSTGRES_SSL_CA_FILE
+        value: deploy/certs/supabase-prod-ca-2021.crt
+      - key: POSTGRES_SSL_LEGACY_CA
         value: "true"
       - key: SERVE_FRONTEND
         value: "true"

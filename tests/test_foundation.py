@@ -1,7 +1,10 @@
 import asyncio
+import ssl
 from pathlib import Path
 
 import httpx
+import pytest
+from pydantic import ValidationError
 from pydantic import SecretStr
 from sqlalchemy.orm import configure_mappers
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -11,6 +14,29 @@ from livemap.api.routers import health
 from livemap.core.config import ROOT_DIR, Config, DatabaseConfig
 from livemap.db.base import Base
 from livemap.db.models import Camera, Place
+
+
+def test_hosted_database_credentials_schema_and_tls() -> None:
+    settings = Config(
+        _env_file=None, postgres_user="runtime", postgres_password="runtime-secret",
+        postgres_db="postgres", postgres_host="localhost", postgres_port=5432,
+        database_schema="livemap", postgres_ssl=True,
+        postgres_ssl_ca_file=str(ROOT_DIR / "deploy/certs/supabase-prod-ca-2021.crt"),
+        postgres_ssl_legacy_ca=True, postgres_migration_user="owner",
+        postgres_migration_password="migration-secret",
+    )
+    assert settings.database.user == "runtime"
+    assert settings.migration_database.user == "owner"
+    assert settings.migration_database.password.get_secret_value() == "migration-secret"
+    args = settings.database.get_connect_args()
+    assert args["server_settings"]["search_path"] == "livemap,extensions,public"
+    context = args["ssl"]
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert context.check_hostname is True
+    with pytest.raises(ValidationError):
+        settings.model_copy().model_validate({**settings.model_dump(), "database_schema": "public;DROP SCHEMA public"})
+    with pytest.raises(ValidationError):
+        Config(_env_file=None, **{**settings.model_dump(), "postgres_migration_password": None})
 
 
 def request(path: str) -> httpx.Response:

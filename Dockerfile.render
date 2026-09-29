@@ -20,6 +20,7 @@ RUN pip install uv==0.12.5 && uv sync --frozen --no-dev && \
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY demo ./demo
+COPY deploy/certs ./deploy/certs
 COPY scripts/render-start.sh ./scripts/render-start.sh
 COPY --from=frontend /frontend/dist ./frontend-dist
 USER livemap

@@ -19,7 +19,7 @@ def get_engine() -> AsyncEngine:
         settings.database.get_db_url(),
         echo=settings.database.echo,
         pool_pre_ping=True,
-        connect_args={"ssl": True} if settings.database.ssl else {},
+        connect_args=settings.database.get_connect_args(),
     )
 
 

@@ -12,6 +12,7 @@ wheels/
 .venv/
 frontend/node_modules/
 frontend/dist/
+frontend-dist/
 .playwright-cli/
 .playwright-browsers/
 frontend/test-results/

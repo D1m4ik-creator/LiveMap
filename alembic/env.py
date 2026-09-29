@@ -21,7 +21,8 @@ def include_name(name: str | None, type_: str, _parent_names: dict) -> bool:
 
 
 def run_migrations_offline() -> None:
-    url = get_settings().database.get_db_url().render_as_string(hide_password=False)
+    database = get_settings().migration_database
+    url = database.get_db_url().render_as_string(hide_password=False)
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -29,6 +30,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        version_table_schema=database.schema_name,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -40,15 +42,16 @@ def run_migrations(connection) -> None:
         target_metadata=target_metadata,
         include_name=include_name,
         compare_type=True,
+        version_table_schema=get_settings().database_schema,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 async def run_migrations_online() -> None:
-    database = get_settings().database
+    database = get_settings().migration_database
     engine = create_async_engine(database.get_db_url(), poolclass=pool.NullPool,
-                                 connect_args={"ssl": True} if database.ssl else {})
+                                 connect_args=database.get_connect_args())
     try:
         async with engine.connect() as connection:
             await connection.run_sync(run_migrations)

@@ -1,18 +1,25 @@
 # Выпуск и эксплуатация LiveMap
 
-## Бесплатный демонстрационный стенд: Render + Neon
+## Бесплатный демонстрационный стенд: Render + Supabase
 
-Для первого публичного адреса используйте один [Render Free Web Service](https://render.com/docs/free) из `render.yaml` и отдельную [Neon Free Postgres](https://neon.com/pricing) с PostGIS. Render выдаёт HTTPS-адрес `onrender.com`; `Dockerfile.render` собирает фронтенд и API в один контейнер, а при старте применяет миграции. Neon поддерживает [PostGIS](https://neon.com/docs/extensions/postgis). База Render Free не подходит для постоянного каталога: она истекает через 30 дней. У Render Free сервис засыпает после 15 минут без запросов, поэтому встроенный worker проверяет камеры только пока сервис активен. Это стенд для приёмки, а не непрерывный production.
+Используется один [Render Free Web Service](https://render.com/docs/free) из `render.yaml` и [Supabase Postgres с PostGIS](https://supabase.com/docs/guides/database/extensions/postgis). Python-сервис собирает React через `scripts/render-build.sh`, применяет миграции и запускает API через `scripts/render-start.sh`. `Dockerfile.render` остаётся альтернативой контейнерного запуска. На Render Free сервис засыпает после 15 минут без запросов: встроенный worker работает только пока процесс активен. Supabase Free также может приостанавливать неактивные проекты. Стенд предназначен для приёмки; круглосуточная работа не гарантируется.
 
-Порядок запуска после создания аккаунтов владельцем:
+Подключение базы:
 
-1. В Neon создайте проект Free и возьмите **direct** connection string. Запишите отдельно `POSTGRES_HOST`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`; порт 5432. Не публикуйте строку подключения.
-2. В Render подключите GitHub-репозиторий и создайте Blueprint из `render.yaml` на ветке `codex/livemap-foundation`. На первом экране задайте четыре параметра Neon и `VITE_MAPTILER_KEY` (при наличии). Проверьте, что план сервиса — Free.
-3. Дождитесь успешных сборки, миграций и `/api/v1/health/ready`. Проверьте итоговый адрес. `PUBLIC_ORIGIN` при запуске берётся из `RENDER_EXTERNAL_URL`. Ограничьте MapTiler-ключ этим адресом.
-4. С локального компьютера создайте администратора и заполните разрешённый каталог, подключив локальный backend-контейнер к Neon через отдельный, не попадающий в Git `.env.render`. Запустите `docker build -t livemap-admin .`, затем `docker run --rm -it --env-file .env.render livemap-admin livemap-admin create-user ИМЯ --role admin` и `docker run --rm --env-file .env.render livemap-admin livemap-seed-verified`. В `.env.render` задайте параметры Neon, `POSTGRES_SSL=true`, `PUBLIC_ORIGIN` равным HTTPS-адресу Render. Импортируйте только источники, прошедшие повторную проверку прав и воспроизведения.
-5. Проверьте карту, авторизацию, реальный эфир и мобильный экран по публичному HTTPS-адресу. Сделайте резервную копию Neon через `pg_dump` и проверьте восстановление отдельно. Не считайте запуск завершённым до этой приёмки.
+1. Создайте проект Supabase Free. Возьмите hostname из **Connect → Direct → Session pooler**, порт **5432**, базу `postgres`. Session pooler нужен для IPv4-сети Render; transaction pooler 6543 не используется с prepared statements asyncpg.
+2. Администратор устанавливает PostGIS в `extensions`. Создайте роли `livemap_owner` и `livemap_app` с разными случайными паролями, без SUPERUSER/CREATEDB/CREATEROLE/BYPASSRLS. Предоставьте роль `livemap_owner` пользователю `postgres` и создайте схему `livemap AUTHORIZATION livemap_owner`. Выдайте `livemap_app` только USAGE схемы и DML таблиц через `ALTER DEFAULT PRIVILEGES FOR ROLE livemap_owner IN SCHEMA livemap`. Обеим ролям нужен USAGE `extensions`. Исключите `livemap` из exposed schemas Data API.
+3. Задайте `DATABASE_SCHEMA=livemap`, `POSTGRES_USER=livemap_app.<ref>`, `POSTGRES_PASSWORD`, `POSTGRES_MIGRATION_USER=livemap_owner.<ref>`, `POSTGRES_MIGRATION_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_DB=postgres`, `POSTGRES_PORT=5432`, `POSTGRES_SSL=true`. Пароли хранятся в Render Environment и игнорируемом Git файле `.env.supabase`.
+4. Для TLS задайте `POSTGRES_SSL_CA_FILE=deploy/certs/supabase-prod-ca-2021.crt`, `POSTGRES_SSL_LEGACY_CA=true`. Публичный сертификат скачан по ссылке из Database Settings Supabase. CA 2021 не содержит keyUsage; режим совместимости снимает только VERIFY_X509_STRICT Python 3.13. Проверки цепочки, срока и hostname остаются включёнными. SHA256 файла: `700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7`.
+5. Примените `alembic upgrade head` с ролью владельца. Затем выполните `deploy/supabase-access.sql` как администратор: закрываются права anon/authenticated, включается RLS с доступом только роли backend. Runtime не может менять таблицы или версию миграций. Start script удаляет пароли миграций из окружения процесса API.
 
-`POSTGRES_SSL=true` включает TLS для API и Alembic. Секреты Neon задаются только в Render и `.env.render`; в Git остаются лишь имена переменных. На Free нет гарантии постоянной работы worker и оповещений. Для круглосуточной проверки камер и надёжного публичного сервиса потребуется тариф с постоянным процессом или другой сервер.
+Сборка и проверка:
+
+1. Создайте Render Python Web Service Free из ветки `codex/livemap-foundation`: build `sh scripts/render-build.sh`, start `sh scripts/render-start.sh`. Версии Python/Node/uv и остальные настройки находятся в `render.yaml`; создание поддерживается Render MCP. `VITE_MAPTILER_KEY` задаётся до сборки при наличии.
+2. Дождитесь успешной сборки, миграций и `/api/v1/health/ready`. `PUBLIC_ORIGIN` берётся из `RENDER_EXTERNAL_URL`. Проверьте MapTiler-ограничения по итоговому адресу.
+3. Для административных команд загрузите `.env.supabase` в окружение терминала и задайте `PUBLIC_ORIGIN` равным адресу Render. Выполните `livemap-admin create-user ИМЯ --role admin`, `livemap-seed-candidates`, затем `livemap-seed-verified`. Публикация требует свежей браузерной проверки и live probe.
+4. Проверьте карту, вход, реальный эфир и мобильный экран по HTTPS. Сделайте `pg_dump --schema=livemap` через Session pooler с ролью владельца и проверьте восстановление в отдельной PostGIS-базе. Не полагайтесь на автоматические backups Free-тарифа.
+
+Текущий проект Supabase: `jpjynmxezjnzcdnrumxr`, Frankfurt, организация D1m4ik-creator's Org. Session pooler: `aws-1-eu-central-1.pooler.supabase.com`. API сохраняет собственную авторизацию LiveMap; ключи Supabase и доступ к базе во фронтенд не передаются. Для постоянного сервиса нужны процесс без сна, внешние оповещения и регулярные проверяемые резервные копии.
 
 ## Развёртывание Compose на собственном сервере
 

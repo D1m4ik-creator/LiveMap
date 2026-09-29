@@ -1,9 +1,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { setWorkerUrl } from 'maplibre-gl';
+import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Route, Routes } from 'react-router';
 import { MapPage } from './map/MapPage';
 import './style.css';
+
+// Bundle the worker and its shared imports into a same-origin asset for CSP.
+setWorkerUrl(mapWorkerUrl);
 
 const AdminPage = lazy(() => import('./admin/AdminPage').then(({ AdminPage }) => ({ default: AdminPage })));
 

@@ -38,6 +38,24 @@ async function mockCatalog(page: Page, online = true) {
   });
 }
 
+test('production-карта загружает отдельный worker при строгой CSP', async ({ page }) => {
+  await mockCatalog(page);
+  await page.route('http://127.0.0.1:4173/', async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, headers: {
+      ...response.headers(),
+      'content-security-policy': "default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; img-src 'self' data: blob:",
+    } });
+  });
+  const workerResponse = page.waitForResponse((response) =>
+    /\/assets\/maplibre-gl-worker-[^/]+\.js$/.test(response.url()));
+  await page.goto('/');
+  expect((await workerResponse).ok()).toBe(true);
+  await expect.poll(() => page.workers().length).toBeGreaterThan(0);
+  expect(await page.workers()[0].evaluate(() => typeof self.postMessage)).toBe('function');
+  await expect(page.getByText('Worker failed to load.', { exact: false })).toHaveCount(0);
+});
+
 test('поиск открывает место и плеер, закрытие возвращает к карточке', async ({ page }) => {
   await mockCatalog(page);
   await page.goto('/');

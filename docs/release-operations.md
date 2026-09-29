@@ -2,6 +2,8 @@
 
 ## Бесплатный демонстрационный стенд: Render + Supabase
 
+Адрес: **https://livemap-demo.onrender.com/**. Render service: `srv-dau2l6nlk1mc73dende0`, Frankfurt, Free. Репозиторий подключён через публичный URL без GitHub OAuth: [автоматические deploy в этом режиме не поддерживаются](https://render.com/docs/deploys). После нового push используйте Render MCP `trigger_deploy` или Manual Deploy в Dashboard. Blueprint описывает readiness path, но Direct Creation MCP не передаёт healthCheckPath: текущий Render healthcheck проверяет корень сайта. Отдельно проверяйте `/api/v1/health/ready`; этот путь можно назначить в Settings сервиса.
+
 Используется один [Render Free Web Service](https://render.com/docs/free) из `render.yaml` и [Supabase Postgres с PostGIS](https://supabase.com/docs/guides/database/extensions/postgis). Python-сервис собирает React через `scripts/render-build.sh`, применяет миграции и запускает API через `scripts/render-start.sh`. `Dockerfile.render` остаётся альтернативой контейнерного запуска. На Render Free сервис засыпает после 15 минут без запросов: встроенный worker работает только пока процесс активен. Supabase Free также может приостанавливать неактивные проекты. Стенд предназначен для приёмки; круглосуточная работа не гарантируется.
 
 Подключение базы:

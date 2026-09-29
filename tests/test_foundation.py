@@ -1,4 +1,5 @@
 import asyncio
+import json
 import ssl
 from pathlib import Path
 
@@ -9,9 +10,9 @@ from pydantic import SecretStr
 from sqlalchemy.orm import configure_mappers
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from livemap.api.app import app
+from livemap.api.app import app, create_app
 from livemap.api.routers import health
-from livemap.core.config import ROOT_DIR, Config, DatabaseConfig
+from livemap.core.config import ROOT_DIR, Config, DatabaseConfig, get_settings
 from livemap.db.base import Base
 from livemap.db.models import Camera, Place
 
@@ -94,6 +95,31 @@ def test_liveness_and_error_format() -> None:
     assert response.json() == {
         "error": {"code": "not_found", "message": "Resource not found"}
     }
+
+
+def test_public_csp_allows_reviewed_camera_embeds(monkeypatch) -> None:
+    monkeypatch.setattr(get_settings(), "serve_frontend", True)
+    public_app = create_app()
+
+    async def send():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=public_app), base_url="https://test"
+        ) as client:
+            response = await client.get("/api/v1/health/live")
+            assert (await client.get("/internal/metrics")).status_code == 404
+            return response
+
+    response = asyncio.run(send())
+    policy = response.headers["content-security-policy"]
+    frame_sources = next(part.strip().split()[1:] for part in policy.split(";")
+                         if part.strip().startswith("frame-src "))
+    catalog = json.loads((ROOT_DIR / "demo/camera_candidates.json").read_text(encoding="utf-8"))
+    caddy = (ROOT_DIR / "frontend/Caddyfile").read_text(encoding="utf-8")
+    for camera in catalog:
+        if camera.get("publish_reviewed") and camera["playback_type"] == "iframe":
+            origin = f'https://{camera["embed_host"]}'
+            assert origin in frame_sources
+            assert origin in caddy.split("frame-src ")[1].split(";")[0].split()
 
 
 def test_request_observability_does_not_log_query_secrets(caplog) -> None:

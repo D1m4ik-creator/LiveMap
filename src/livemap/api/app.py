@@ -85,7 +85,8 @@ def create_app() -> FastAPI:
                     "https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; "
                     "img-src 'self' data: blob: https:; connect-src 'self' https:; "
                     "media-src 'self' blob: https:; frame-src https://ipeye.ru "
-                    "https://open.ivideon.com https://rutube.ru; worker-src 'self' blob:; "
+                    "https://open.ivideon.com https://rutube.ru https://dvr.astrakhan.ru; "
+                    "worker-src 'self' blob:; "
                     "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
                 )
             return response

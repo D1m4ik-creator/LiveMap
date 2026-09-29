@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: livemap-demo
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: codex/livemap-foundation
+    dockerfilePath: ./Dockerfile.render
+    healthCheckPath: /api/v1/health/ready
+    envVars:
+      - key: POSTGRES_USER
+        sync: false
+      - key: POSTGRES_PASSWORD
+        sync: false
+      - key: POSTGRES_DB
+        sync: false
+      - key: POSTGRES_HOST
+        sync: false
+      - key: POSTGRES_PORT
+        value: "5432"
+      - key: POSTGRES_SSL
+        value: "true"
+      - key: SERVE_FRONTEND
+        value: "true"
+      - key: EMBEDDED_WORKER
+        value: "true"
+      - key: VITE_MAPTILER_KEY
+        sync: false

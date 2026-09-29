@@ -3,10 +3,13 @@
 .pytest_cache
 __pycache__
 .env
-frontend
+.env*
+frontend/node_modules
+frontend/dist
+frontend/test-results
+frontend/playwright-report
 tests
 docs
-demo
 .uv-cache
 .npm-cache
 .playwright-browsers

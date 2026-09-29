@@ -16,6 +16,7 @@ class DatabaseConfig(BaseModel):
     host: str
     port: int
     echo: bool = False
+    ssl: bool = False
 
     def get_db_url(self) -> URL:
         return URL.create(
@@ -41,6 +42,7 @@ class Config(BaseSettings):
     postgres_db: str
     postgres_host: str
     postgres_port: int
+    postgres_ssl: bool = False
 
     database_echo: bool = False
     app_host: str = "127.0.0.1"
@@ -48,6 +50,8 @@ class Config(BaseSettings):
     public_origin: str = "http://localhost:5173"
     camera_check_interval_seconds: int = 300
     camera_check_concurrency: int = 4
+    serve_frontend: bool = False
+    embedded_worker: bool = False
 
     @property
     def database(self) -> DatabaseConfig:
@@ -58,6 +62,7 @@ class Config(BaseSettings):
             host=self.postgres_host,
             port=self.postgres_port,
             echo=self.database_echo,
+            ssl=self.postgres_ssl,
         )
 
 

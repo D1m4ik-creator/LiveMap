@@ -46,7 +46,9 @@ def run_migrations(connection) -> None:
 
 
 async def run_migrations_online() -> None:
-    engine = create_async_engine(get_settings().database.get_db_url(), poolclass=pool.NullPool)
+    database = get_settings().database
+    engine = create_async_engine(database.get_db_url(), poolclass=pool.NullPool,
+                                 connect_args={"ssl": True} if database.ssl else {})
     try:
         async with engine.connect() as connection:
             await connection.run_sync(run_migrations)

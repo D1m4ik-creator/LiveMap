@@ -1,12 +1,24 @@
 # Выпуск и эксплуатация LiveMap
 
-## Бесплатный стенд
+## Бесплатный демонстрационный стенд: Render + Neon
 
-Для непрерывной работы API, PostGIS и worker подходит одна [VM Oracle Cloud Always Free](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm) (Ampere A1). В аккаунте проверьте пометку Always Free, доступность VM и текущие лимиты; регистрацию и подтверждение телефона/карты выполняет владелец аккаунта. Для первого адреса можно использовать [`IP-АДРЕС.sslip.io`](https://nip.io/): этот DNS-сервис возвращает IP, указанный в имени. Адрес зависит от IP VM и оператора DNS; позже лучше перейти на собственный домен.
+Для первого публичного адреса используйте один [Render Free Web Service](https://render.com/docs/free) из `render.yaml` и отдельную [Neon Free Postgres](https://neon.com/pricing) с PostGIS. Render выдаёт HTTPS-адрес `onrender.com`; `Dockerfile.render` собирает фронтенд и API в один контейнер, а при старте применяет миграции. Neon поддерживает [PostGIS](https://neon.com/docs/extensions/postgis). База Render Free не подходит для постоянного каталога: она истекает через 30 дней. У Render Free сервис засыпает после 15 минут без запросов, поэтому встроенный worker проверяет камеры только пока сервис активен. Это стенд для приёмки, а не непрерывный production.
 
-На VM установите Docker Engine и Compose, откройте входящие TCP 80/443 в правилах Oracle и firewall ОС, клонируйте репозиторий. Укажите в `.env` длинный пароль БД, `SITE_ADDRESS=IP-АДРЕС.sslip.io`, `PUBLIC_ORIGIN=https://IP-АДРЕС.sslip.io`, `HTTP_PORT=80`, `HTTPS_PORT=443`. Порт БД в Compose привязан к `127.0.0.1`, не открывайте 5432 в firewall. Не помещайте ключи в Git. `VITE_MAPTILER_KEY` встраивается в браузерную сборку и должен быть ограничен разрешённым доменом в MapTiler.
+Порядок запуска после создания аккаунтов владельцем:
 
-Выпуск:
+1. В Neon создайте проект Free и возьмите **direct** connection string. Запишите отдельно `POSTGRES_HOST`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`; порт 5432. Не публикуйте строку подключения.
+2. В Render подключите GitHub-репозиторий и создайте Blueprint из `render.yaml` на ветке `codex/livemap-foundation`. На первом экране задайте четыре параметра Neon и `VITE_MAPTILER_KEY` (при наличии). Проверьте, что план сервиса — Free.
+3. Дождитесь успешных сборки, миграций и `/api/v1/health/ready`. Проверьте итоговый адрес. `PUBLIC_ORIGIN` при запуске берётся из `RENDER_EXTERNAL_URL`. Ограничьте MapTiler-ключ этим адресом.
+4. С локального компьютера создайте администратора и заполните разрешённый каталог, подключив локальный backend-контейнер к Neon через отдельный, не попадающий в Git `.env.render`. Запустите `docker build -t livemap-admin .`, затем `docker run --rm -it --env-file .env.render livemap-admin livemap-admin create-user ИМЯ --role admin` и `docker run --rm --env-file .env.render livemap-admin livemap-seed-verified`. В `.env.render` задайте параметры Neon, `POSTGRES_SSL=true`, `PUBLIC_ORIGIN` равным HTTPS-адресу Render. Импортируйте только источники, прошедшие повторную проверку прав и воспроизведения.
+5. Проверьте карту, авторизацию, реальный эфир и мобильный экран по публичному HTTPS-адресу. Сделайте резервную копию Neon через `pg_dump` и проверьте восстановление отдельно. Не считайте запуск завершённым до этой приёмки.
+
+`POSTGRES_SSL=true` включает TLS для API и Alembic. Секреты Neon задаются только в Render и `.env.render`; в Git остаются лишь имена переменных. На Free нет гарантии постоянной работы worker и оповещений. Для круглосуточной проверки камер и надёжного публичного сервиса потребуется тариф с постоянным процессом или другой сервер.
+
+## Развёртывание Compose на собственном сервере
+
+Если появится сервер, установите Docker Engine и Compose, откройте TCP 80/443 в firewall, клонируйте репозиторий. Укажите в `.env` длинный пароль БД, `SITE_ADDRESS=домен`, `PUBLIC_ORIGIN=https://домен`, `HTTP_PORT=80`, `HTTPS_PORT=443`. Порт БД в Compose привязан к `127.0.0.1`; не открывайте 5432 в firewall. `VITE_MAPTILER_KEY` встраивается в браузерную сборку и должен быть ограничен доменом.
+
+Выпуск на собственном сервере:
 
 ```bash
 cp .env.example .env
@@ -16,10 +28,10 @@ docker compose --profile app build
 docker compose run --rm api alembic upgrade head
 docker compose --profile app up -d
 docker compose --profile app ps
-curl -fsS https://IP-АДРЕС.sslip.io/api/v1/health/ready
+curl -fsS https://домен/api/v1/health/ready
 ```
 
-Первого администратора создайте из терминала VM: `docker compose run --rm api livemap-admin create-user USERNAME --role admin`. Пароль задаётся интерактивно. Если потоки уже одобрены, запустите `docker compose run --rm api livemap-seed-verified` и проверьте фактические эфиры с публичного адреса до открытия каталога.
+Первого администратора создайте из терминала сервера: `docker compose run --rm api livemap-admin create-user USERNAME --role admin`. Пароль задаётся интерактивно. Если потоки уже одобрены, запустите `docker compose run --rm api livemap-seed-verified` и проверьте фактические эфиры с публичного адреса до открытия каталога.
 
 ## Наблюдение
 
@@ -27,7 +39,7 @@ curl -fsS https://IP-АДРЕС.sslip.io/api/v1/health/ready
 
 ## Резервные копии и откат
 
-На VM запускайте `bash scripts/backup.sh` по расписанию, копируйте архивы за пределы VM и ограничьте доступ к ним. Проверяйте восстановление через `bash scripts/verify-backup.sh backups/ИМЯ.dump`: скрипт создаёт отдельную временную БД, восстанавливает архив и удаляет её. Проверка не заменяет регулярную проверку данных приложения после восстановления.
+На собственном сервере запускайте `bash scripts/backup.sh` по расписанию, копируйте архивы за пределы сервера и ограничьте доступ к ним. Проверяйте восстановление через `bash scripts/verify-backup.sh backups/ИМЯ.dump`: скрипт создаёт отдельную временную БД, восстанавливает архив и удаляет её. Проверка не заменяет регулярную проверку данных приложения после восстановления.
 
 Перед обновлением сделайте backup. Для отката приложения вернитесь к предыдущему коммиту и пересоберите контейнеры. Если новая миграция меняла данные, сначала остановите API/worker, сохраните текущую БД и восстановите проверенный архив в отдельной среде; не выполняйте `alembic downgrade` на рабочей базе без оценки потерь данных. После восстановления снова проверьте `health/ready`, карту, поиск, вход администратора и публикацию камеры.
 

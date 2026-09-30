@@ -80,8 +80,15 @@ test('на мобильной ширине недоступный эфир не 
   await expect(page.getByTitle('Площадь сейчас')).toHaveCount(0);
 });
 
-test('администратор публикует и снимает камеру с публикации', async ({ page }) => {
+test('сессия администратора переживает обновление, сохранение и ошибки камеры', async ({ page }) => {
   let published = false;
+  let name = 'Площадь сейчас';
+  let patchStatus = 200;
+  let meStatus = 200;
+  let authorized = true;
+  let logins = 0;
+  let navigations = 0;
+  page.on('framenavigated', (frame) => { if (frame === page.mainFrame()) navigations++; });
   const now = new Date().toISOString();
   const adminPlace = { ...place, cameras: undefined, is_published: true, created_at: now, updated_at: now };
   const source = {
@@ -92,23 +99,34 @@ test('администратор публикует и снимает камер
     removal_contact: 'operator@example.org', is_approved: true, created_at: now, updated_at: now,
   };
   const camera = () => ({
-    id: 7, place_id: 1, source_id: 3, name: 'Площадь сейчас', playback_type: 'hls',
+    id: 7, place_id: 1, source_id: 3, name, playback_type: 'hls',
     valid_until: null, is_published: published, status: 'online', last_checked_at: now,
     last_success_at: now, next_check_at: null, last_error_code: null, consecutive_failures: 0,
     embed_verified_at: null, unpublished_reason: null, created_at: now, updated_at: now,
   });
   await page.route('**/api/v1/admin/**', (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname.endsWith('/login')) return route.fulfill({ json: {
-      access_token: 'test-token', token_type: 'bearer', expires_at: now, role: 'admin',
-    } });
-    if (url.pathname.endsWith('/me')) return route.fulfill({ json: { id: 1, username: 'root', role: 'admin' } });
+    if (url.pathname.endsWith('/login')) {
+      logins++;
+      return route.fulfill({ json: {
+        access_token: 'test-token', token_type: 'bearer', expires_at: new Date(Date.now() + 8 * 3_600_000).toISOString(), role: 'admin',
+      } });
+    }
+    expect(route.request().headers().authorization).toBe('Bearer test-token');
+    if (url.pathname.endsWith('/logout')) return route.fulfill({ status: 204 });
+    if (!authorized) return route.fulfill({ status: 401, json: { error: { code: 'unauthorized', message: 'Authentication required' } } });
+    if (url.pathname.endsWith('/me')) return route.fulfill({ status: meStatus, json: meStatus === 200
+      ? { id: 1, username: 'root', role: 'admin' }
+      : { error: { code: 'unavailable', message: 'Temporarily unavailable' } } });
     if (url.pathname.endsWith('/places')) return route.fulfill({ json: [adminPlace] });
     if (url.pathname.endsWith('/sources')) return route.fulfill({ json: [source] });
     if (url.pathname.endsWith('/cameras')) return route.fulfill({ json: [camera()] });
     if (url.pathname.endsWith('/cameras/7/checks')) return route.fulfill({ json: [] });
     if (url.pathname.endsWith('/cameras/7') && route.request().method() === 'PATCH') {
-      published = !published;
+      if (patchStatus !== 200) return route.fulfill({ status: patchStatus, json: { error: { code: 'test_error', message: 'Ошибка сохранения' } } });
+      const body = route.request().postDataJSON();
+      if ('is_published' in body) published = body.is_published;
+      if ('name' in body) name = body.name;
       return route.fulfill({ json: camera() });
     }
     return route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'Not found' } } });
@@ -117,11 +135,58 @@ test('администратор публикует и снимает камер
   await page.getByLabel('Имя пользователя').fill('root');
   await page.getByLabel('Пароль').fill('test-password-123');
   await page.getByRole('button', { name: 'Войти' }).click();
+  await expect(page.getByRole('heading', { name: 'Управление каталогом' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Управление каталогом' })).toBeVisible();
+  expect(logins).toBe(1);
   await page.getByRole('navigation', { name: 'Разделы панели' }).getByRole('button', { name: 'Камеры' }).click();
   await page.getByRole('button', { name: /Площадь сейчас/ }).click();
+  const beforeSave = navigations;
+  await page.getByLabel('Название камеры').fill('Обновлённая камера');
+  await page.getByRole('button', { name: 'Сохранить камеру' }).click();
+  await expect(page.getByText('Камера сохранена')).toBeVisible();
+  await expect(page.getByLabel('Название камеры')).toHaveValue('Обновлённая камера');
+  expect(navigations).toBe(beforeSave);
   await page.getByRole('button', { name: 'Опубликовать камеру' }).click();
   await expect(page.getByText('Камера опубликована')).toBeVisible();
   await page.getByRole('button', { name: 'Снять с публикации' }).click();
   await expect(page.getByText('Камера снята с публикации')).toBeVisible();
   expect(published).toBe(false);
+  for (const status of [409, 500]) {
+    patchStatus = status;
+    await page.getByLabel('Название камеры').fill(`Попытка ${status}`);
+    await page.getByRole('button', { name: 'Сохранить камеру' }).click();
+    await expect(page.getByRole('alert')).toContainText('Ошибка сохранения');
+    await expect(page.getByRole('heading', { name: 'Управление каталогом' })).toBeVisible();
+    expect(logins).toBe(1);
+  }
+  meStatus = 503;
+  await page.reload();
+  await expect(page.getByRole('alert')).toContainText('Не удалось проверить сессию');
+  meStatus = 200;
+  await page.getByRole('button', { name: 'Повторить', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Управление каталогом' })).toBeVisible();
+  expect(logins).toBe(1);
+  await page.getByRole('button', { name: 'Выйти', exact: true }).click();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Вход в LiveMap' })).toBeVisible();
+  await page.getByLabel('Имя пользователя').fill('root');
+  await page.getByLabel('Пароль').fill('test-password-123');
+  await page.getByRole('button', { name: 'Войти' }).click();
+  await expect(page.getByRole('heading', { name: 'Управление каталогом' })).toBeVisible();
+  authorized = false;
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Вход в LiveMap' })).toBeVisible();
+  await expect(page.getByRole('alert')).toContainText('Сессия завершилась');
+  authorized = true;
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Вход в LiveMap' })).toBeVisible();
+  await page.clock.install();
+  await page.getByLabel('Имя пользователя').fill('root');
+  await page.getByLabel('Пароль').fill('test-password-123');
+  await page.getByRole('button', { name: 'Войти' }).click();
+  await expect(page.getByRole('heading', { name: 'Управление каталогом' })).toBeVisible();
+  await page.clock.fastForward(8 * 3_600_000);
+  await expect(page.getByRole('heading', { name: 'Вход в LiveMap' })).toBeVisible();
+  await expect(page.getByRole('alert')).toContainText('Сессия завершилась');
 });

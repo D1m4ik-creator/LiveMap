@@ -1,9 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LogOut, Plus, Radio } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
-import { adminApi } from '../api/client';
-import type { AdminRole, CameraInput, PlaceInput, SourceInput } from '../types';
+import { adminApi, ApiError } from '../api/client';
+import type { CameraInput, PlaceInput, SourceInput } from '../types';
 import { StatusBadge } from '../ui/StatusBadge';
 import { ActionButton } from '../ui/ActionButton';
 import { FormField } from '../ui/FormField';
@@ -12,6 +12,7 @@ import { CameraEditor } from './CameraEditor';
 import { ImportPanel } from './ImportPanel';
 import { PlaceEditor } from './PlaceEditor';
 import { SourceEditor } from './SourceEditor';
+import { readSession, saveSession, sessionRejectedEvent, type AdminSession } from './session';
 
 type Tab = 'places' | 'sources' | 'cameras' | 'import' | 'audit';
 const tabs: { id: Tab; label: string }[] = [
@@ -22,8 +23,8 @@ const tabs: { id: Tab; label: string }[] = [
 
 export function AdminPage() {
   const queryClient = useQueryClient();
-  const [token, setToken] = useState<string | null>(null);
-  const [role, setRole] = useState<AdminRole | null>(null);
+  const [session, setSession] = useState<AdminSession | null>(readSession);
+  const token = session?.access_token ?? null;
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [tab, setTab] = useState<Tab>('places');
@@ -32,11 +33,34 @@ export function AdminPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const me = useQuery({ queryKey: ['admin', 'me'], enabled: Boolean(token), queryFn: () => adminApi.me(token!) });
-  const places = useQuery({ queryKey: ['admin', 'places'], enabled: Boolean(token), queryFn: () => adminApi.places(token!) });
-  const sources = useQuery({ queryKey: ['admin', 'sources'], enabled: Boolean(token), queryFn: () => adminApi.sources(token!) });
-  const cameras = useQuery({ queryKey: ['admin', 'cameras'], enabled: Boolean(token), queryFn: () => adminApi.cameras(token!) });
+  const me = useQuery({ queryKey: ['admin', 'me'], enabled: Boolean(token), queryFn: () => adminApi.me(token!), retry: (count, cause) => !(cause instanceof ApiError && cause.status === 401) && count < 1 });
+  const role = me.data?.role ?? null;
+  const places = useQuery({ queryKey: ['admin', 'places'], enabled: Boolean(token && role), queryFn: () => adminApi.places(token!) });
+  const sources = useQuery({ queryKey: ['admin', 'sources'], enabled: Boolean(token && role), queryFn: () => adminApi.sources(token!) });
+  const cameras = useQuery({ queryKey: ['admin', 'cameras'], enabled: Boolean(token && role), queryFn: () => adminApi.cameras(token!) });
   const audit = useQuery({ queryKey: ['admin', 'audit'], enabled: Boolean(token) && role === 'admin' && tab === 'audit', queryFn: () => adminApi.audit(token!) });
+
+  const clearSession = () => {
+    saveSession(null); setSession(null); setSelectedId(null); setMessage(null);
+    void queryClient.cancelQueries({ queryKey: ['admin'] });
+    queryClient.removeQueries({ queryKey: ['admin'] });
+  };
+  useEffect(() => {
+    if (!session) return;
+    const expire = () => {
+      clearSession();
+      setError('Сессия завершилась. Войдите снова.');
+    };
+    const rejected = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === session.access_token) expire();
+    };
+    window.addEventListener(sessionRejectedEvent, rejected);
+    const timer = window.setTimeout(expire, Math.max(0, Date.parse(session.expires_at) - Date.now()));
+    return () => {
+      window.removeEventListener(sessionRejectedEvent, rejected);
+      window.clearTimeout(timer);
+    };
+  }, [session, queryClient]);
 
   const run = async <T,>(operation: () => Promise<T>, success: string, after?: (value: T) => void) => {
     setBusy(true); setError(null); setMessage(null);
@@ -45,21 +69,24 @@ export function AdminPage() {
       after?.(result);
       setMessage(success);
       await queryClient.invalidateQueries({ queryKey: ['admin'] });
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Операция не выполнена'); }
+    } catch (cause) {
+      if (!(cause instanceof ApiError && cause.status === 401)) setError(cause instanceof Error ? cause.message : 'Операция не выполнена');
+    }
     finally { setBusy(false); }
   };
   const login = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setError(null);
     try {
       const result = await adminApi.login(username, password);
-      setToken(result.access_token); setRole(result.role); setPassword('');
+      const next = { access_token: result.access_token, expires_at: result.expires_at };
+      queryClient.removeQueries({ queryKey: ['admin'] });
+      saveSession(next); setSession(next); setPassword('');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Не удалось войти'); }
     finally { setBusy(false); }
   };
   const logout = async () => {
+    clearSession(); setError(null);
     if (token) await adminApi.logout(token).catch(() => undefined);
-    setToken(null); setRole(null); setSelectedId(null);
-    queryClient.removeQueries({ queryKey: ['admin'] });
   };
   const changeTab = (next: Tab) => { setTab(next); setSelectedId(null); setError(null); setMessage(null); };
   const savePlace = (body: PlaceInput | Partial<PlaceInput>, id?: number) => run(
@@ -74,6 +101,12 @@ export function AdminPage() {
     () => id ? adminApi.updateCamera(token!, id, body) : adminApi.createCamera(token!, body as CameraInput),
     id ? 'Камера сохранена' : 'Черновик камеры создан', (item) => setSelectedId(item.id),
   );
+
+  if (token && !role) return <div className="admin-page"><div className="admin-shell"><section className="admin-card login-card">
+    <h1>Проверка сессии</h1>
+    {me.isError ? <><p role="alert">Не удалось проверить сессию. Повторите попытку.</p><ActionButton onClick={() => void me.refetch()}>Повторить</ActionButton></> : <p role="status">Восстанавливаем вход…</p>}
+    <ActionButton onClick={() => void logout()}>Выйти</ActionButton>
+  </section></div></div>;
 
   if (!token || !role) return <div className="admin-page"><div className="admin-shell"><header className="admin-header"><Link className="brand-logo" to="/"><span className="brand-symbol"><Radio size={20} /></span><span>LIVE<span>MAP</span></span></Link><div className="admin-header-actions"><Link to="/">← Вернуться к карте</Link></div></header><form className="admin-card login-card" onSubmit={(event) => void login(event)}><div className="admin-kicker">ПАНЕЛЬ УПРАВЛЕНИЯ</div><h1>Вход в LiveMap</h1><p>Доступ для редакторов и администраторов каталога. Первого пользователя создают локальной командой `uv run livemap-admin create-user`.</p><FormField id="login-user" label="Имя пользователя"><input id="login-user" autoComplete="username" required value={username} onChange={(event) => setUsername(event.target.value)} /></FormField><div style={{ marginTop: 14 }}><FormField id="login-password" label="Пароль"><input id="login-password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></FormField></div>{error && <div className="admin-notice error" role="alert">{error}</div>}<ActionButton variant="primary" type="submit" disabled={busy} style={{ marginTop: 20, width: '100%' }}>{busy ? 'Проверяем…' : 'Войти'}</ActionButton></form></div></div>;
 

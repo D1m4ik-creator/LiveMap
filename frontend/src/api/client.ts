@@ -4,6 +4,7 @@ import type {
   PlaceDetail, PlaceInput, SearchResponse, SourceInput,
 } from '../types';
 import routes from './routes.json';
+import { sessionRejectedEvent } from '../admin/session';
 
 type RouteName = keyof typeof routes;
 function endpoint(name: RouteName, id?: number): string {
@@ -24,6 +25,9 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
     },
   });
   if (!response.ok) {
+    if (response.status === 401 && token) {
+      window.dispatchEvent(new CustomEvent(sessionRejectedEvent, { detail: token }));
+    }
     const body = await response.json().catch(() => null) as { error?: { code?: string; message?: string } } | null;
     throw new ApiError(response.status, body?.error?.code ?? 'http_error', body?.error?.message ?? `HTTP ${response.status}`);
   }

@@ -80,6 +80,55 @@ test('на мобильной ширине недоступный эфир не 
   await expect(page.getByTitle('Площадь сейчас')).toHaveCount(0);
 });
 
+test('одобрение источника объясняет истёкший срок и требует сохранения исправлений', async ({ page }) => {
+  const now = new Date().toISOString();
+  let approvalRequests = 0;
+  let source = {
+    id: 3, owner_name: 'Тестовый источник', public_page_url: 'https://example.org/live',
+    stream_url: 'https://example.org/live.m3u8', secret_ref: null, attribution: 'Тестовый источник',
+    permission_note: 'Только для браузерного теста', permission_evidence_url: 'https://example.org/permission',
+    permission_reviewed_at: now, embed_host: null, permission_expires_at: '2000-01-01T00:00:00Z' as string | null,
+    removal_contact: 'operator@example.org', is_approved: false, created_at: now, updated_at: now,
+  };
+  await page.route('**/api/v1/admin/**', (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/login')) return route.fulfill({ json: {
+      access_token: 'source-test-token', token_type: 'bearer', expires_at: new Date(Date.now() + 8 * 3_600_000).toISOString(), role: 'admin',
+    } });
+    if (path.endsWith('/me')) return route.fulfill({ json: { id: 1, username: 'root', role: 'admin' } });
+    if (path.endsWith('/sources')) return route.fulfill({ json: [source] });
+    if (path.endsWith('/places') || path.endsWith('/cameras')) return route.fulfill({ json: [] });
+    if (path.endsWith('/sources/3') && route.request().method() === 'PATCH') {
+      const body = route.request().postDataJSON();
+      if ('is_approved' in body) {
+        approvalRequests++;
+        expect(source.permission_expires_at).toBeNull();
+        expect(Object.keys(body)).toEqual(['is_approved']);
+      }
+      source = { ...source, ...body };
+      return route.fulfill({ json: source });
+    }
+    return route.fulfill({ status: 404 });
+  });
+  await page.goto('/admin');
+  await page.getByLabel('Имя пользователя').fill('root');
+  await page.getByLabel('Пароль').fill('test-password-123');
+  await page.getByRole('button', { name: 'Войти' }).click();
+  await page.getByRole('navigation', { name: 'Разделы панели' }).getByRole('button', { name: 'Источники' }).click();
+  await page.getByRole('button', { name: /Тестовый источник https/ }).click();
+  const approval = page.getByRole('button', { name: 'Одобрить источник', exact: true });
+  await expect(approval).toBeDisabled();
+  await expect(page.getByRole('list', { name: 'Что требуется для одобрения' })).toContainText('Срок разрешения истёк');
+  await page.getByLabel('Срок разрешения', { exact: true }).fill('');
+  await expect(approval).toBeDisabled();
+  await expect(page.getByRole('list', { name: 'Что требуется для одобрения' })).toContainText('Сначала сохраните изменения');
+  await page.getByRole('button', { name: 'Сохранить источник', exact: true }).click();
+  await expect(approval).toBeEnabled();
+  await approval.click();
+  await expect(page.getByText('Источник одобрен', { exact: true })).toBeVisible();
+  expect(approvalRequests).toBe(1);
+});
+
 test('сессия администратора переживает обновление, сохранение и ошибки камеры', async ({ page }) => {
   let published = false;
   let name = 'Площадь сейчас';

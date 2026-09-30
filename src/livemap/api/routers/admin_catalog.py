@@ -189,8 +189,10 @@ async def update_source(source_id: int, body: SourcePatch, session: SessionDep, 
             camera.unpublished_reason = "source_changed"
             audit(session, actor, "unpublish", "camera", camera.id, f"Camera {camera.id} unpublished after source change")
     if approved is True:
-        if not source.stream_url or (source.permission_expires_at and source.permission_expires_at <= datetime.now(timezone.utc)):
-            raise APIError("invalid_source", "Source URL and current permission are required", 409)
+        if not source.stream_url:
+            raise APIError("missing_stream", "Заполните URL потока или iframe и сохраните источник перед одобрением.", 409)
+        if source.permission_expires_at and source.permission_expires_at <= datetime.now(timezone.utc):
+            raise APIError("permission_expired", "Срок разрешения источника истёк. Проверьте поле «Срок разрешения» и сохраните действующие условия перед одобрением.", 409)
         if not source.permission_evidence_url or not source.permission_reviewed_at or not source.removal_contact:
             raise APIError("rights_incomplete", "Permission evidence, review date and removal contact are required", 409)
         linked_cameras = (

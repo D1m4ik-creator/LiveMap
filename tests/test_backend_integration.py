@@ -122,6 +122,15 @@ def test_admin_catalog_map_search_and_import(test_database_url) -> None:
                 })
                 assert source.status_code == 201, source.text
                 source_id = source.json()["id"]
+                assert (await call("PATCH", f"/api/v1/admin/sources/{source_id}", token=token, json={"stream_url": None})).status_code == 200
+                missing_url = await call("PATCH", f"/api/v1/admin/sources/{source_id}", token=token, json={"is_approved": True})
+                assert missing_url.status_code == 409 and missing_url.json()["error"]["code"] == "missing_stream"
+                assert (await call("PATCH", f"/api/v1/admin/sources/{source_id}", token=token, json={
+                    "stream_url": "https://example.org/live.m3u8", "permission_expires_at": "2000-01-01T00:00:00+00:00",
+                })).status_code == 200
+                expired = await call("PATCH", f"/api/v1/admin/sources/{source_id}", token=token, json={"is_approved": True})
+                assert expired.status_code == 409 and expired.json()["error"]["code"] == "permission_expired"
+                assert (await call("PATCH", f"/api/v1/admin/sources/{source_id}", token=token, json={"permission_expires_at": None})).status_code == 200
                 assert (await call("POST", "/api/v1/admin/sources", token=token, json={
                     "owner_name": "Blocked", "public_page_url": "https://127.0.0.1/camera",
                     "stream_url": "https://example.org/live.m3u8", "attribution": "Blocked",

@@ -46,7 +46,18 @@ export function SourceEditor({ selected, role, busy, onSave, onApprove, onDelete
     const original = selected ? toBody(initial(selected)) : null;
     void onSave(original ? changedFields(original, body) : body, selected?.id);
   };
-  const canApprove = Boolean(selected?.stream_url && selected.permission_evidence_url && selected.permission_reviewed_at && selected.removal_contact);
+  const current = toBody(form);
+  const dirty = selected !== null && Object.keys(changedFields(toBody(initial(selected)), current)).length > 0;
+  const approvalIssues: string[] = [];
+  if (!current.stream_url) approvalIssues.push('Заполните URL потока или iframe');
+  if (!current.permission_evidence_url) approvalIssues.push('Укажите ссылку на условия или разрешение');
+  if (!current.permission_reviewed_at) approvalIssues.push('Укажите, когда условия проверены');
+  if (!current.removal_contact) approvalIssues.push('Укажите контакт для удаления');
+  if (current.permission_expires_at && Date.parse(current.permission_expires_at) <= Date.now()) {
+    approvalIssues.push('Срок разрешения истёк. Проверьте дату окончания разрешения');
+  }
+  if (dirty) approvalIssues.push('Сначала сохраните изменения источника');
+  const canApprove = approvalIssues.length === 0;
   return <form className="admin-form" onSubmit={submit}>
     <div className="form-grid">
       <div className="field wide"><label htmlFor="source-owner">Владелец</label><input id="source-owner" required minLength={2} value={form.owner_name} onChange={(e) => set('owner_name', e.target.value)} /></div>
@@ -58,10 +69,12 @@ export function SourceEditor({ selected, role, busy, onSave, onApprove, onDelete
       <div className="field wide"><label htmlFor="source-note">Основание для показа</label><textarea id="source-note" required minLength={5} value={form.permission_note} onChange={(e) => set('permission_note', e.target.value)} /></div>
       <div className="field wide"><label htmlFor="source-evidence">Ссылка на условия или разрешение</label><input id="source-evidence" type="url" value={form.permission_evidence_url ?? ''} onChange={(e) => set('permission_evidence_url', e.target.value || null)} /></div>
       <div className="field"><label htmlFor="source-review">Когда условия проверены</label><input id="source-review" type="datetime-local" value={form.reviewLocal} onChange={(e) => set('reviewLocal', e.target.value)} /></div>
-      <div className="field"><label htmlFor="source-expiry">Срок разрешения</label><input id="source-expiry" type="datetime-local" value={form.expiryLocal} onChange={(e) => set('expiryLocal', e.target.value)} /></div>
+      <div className="field"><label htmlFor="source-expiry">Срок разрешения</label><input id="source-expiry" type="datetime-local" value={form.expiryLocal} onChange={(e) => set('expiryLocal', e.target.value)} /><small>Дата окончания разрешения, а не дата проверки. Оставьте пустым, если у разрешения нет срока окончания.</small></div>
       <div className="field wide"><label htmlFor="source-contact">Контакт для удаления</label><input id="source-contact" value={form.removal_contact ?? ''} onChange={(e) => set('removal_contact', e.target.value || null)} /></div>
     </div>
-    {selected && <div className="admin-preview">Источник {selected.is_approved ? 'одобрен' : 'ожидает проверки'}. Изменение URL, владельца или условий автоматически снимет одобрение и публикацию связанных камер. Одобрение выполняется отдельным действием после проверки.</div>}
+    {selected && <div className="admin-preview">Источник {selected.is_approved ? 'одобрен' : 'ожидает проверки'}. Изменение URL, владельца или условий автоматически снимет одобрение и публикацию связанных камер. Одобрение выполняется отдельным действием после проверки.
+      {approvalIssues.length > 0 && <ul className="publication-issues" aria-label="Что требуется для одобрения">{approvalIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul>}
+    </div>}
     <div className="admin-form-actions"><button className="admin-primary" type="submit" disabled={busy}>{selected ? 'Сохранить источник' : 'Создать черновик'}</button>{selected && role === 'admin' && <><button type="button" className="admin-secondary" disabled={busy || (!selected.is_approved && !canApprove)} onClick={() => void onApprove(selected.id, !selected.is_approved)}>{selected.is_approved ? 'Отозвать одобрение' : 'Одобрить источник'}</button><button type="button" className="admin-secondary admin-danger" disabled={busy} onClick={() => { if (window.confirm(`Удалить источник «${selected.owner_name}»?`)) void onDelete(selected.id); }}>Удалить</button></>}</div>
   </form>;
 }

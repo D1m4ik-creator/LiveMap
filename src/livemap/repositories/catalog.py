@@ -58,6 +58,16 @@ def published_camera(now: datetime):
                 Source.embed_host == "ipeye.ru",
                 Source.stream_url.like("https://ipeye.ru/ipeye_service/api/iframe.php?%"),
             ),
+            and_(
+                Camera.playback_type == "iframe",
+                Source.embed_host == "glaz.inetvl.ru",
+                Source.stream_url.like("https://glaz.inetvl.ru/embed/v3/?%"),
+            ),
+            and_(
+                Camera.playback_type == "iframe",
+                Source.embed_host == "vkvideo.ru",
+                Source.stream_url.like("https://vkvideo.ru/video_ext.php?%"),
+            ),
         ),
         Source.secret_ref.is_(None),
     )

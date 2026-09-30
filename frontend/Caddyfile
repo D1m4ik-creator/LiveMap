@@ -6,7 +6,7 @@
         Referrer-Policy strict-origin-when-cross-origin
         X-Frame-Options DENY
         Permissions-Policy "camera=(), microphone=(), geolocation=(self)"
-        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https:; media-src 'self' blob: https:; frame-src https://ipeye.ru https://open.ivideon.com https://rutube.ru https://dvr.astrakhan.ru; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https:; media-src 'self' blob: https:; frame-src https://ipeye.ru https://open.ivideon.com https://rutube.ru https://dvr.astrakhan.ru https://www.youtube.com https://glaz.inetvl.ru https://vkvideo.ru; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
     }
 
     @static path /assets/*

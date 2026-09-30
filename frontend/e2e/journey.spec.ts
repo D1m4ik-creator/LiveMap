@@ -136,6 +136,7 @@ test('сессия администратора переживает обнов�
   let meStatus = 200;
   let authorized = true;
   let logins = 0;
+  let cameraPatches = 0;
   let navigations = 0;
   page.on('framenavigated', (frame) => { if (frame === page.mainFrame()) navigations++; });
   const now = new Date().toISOString();
@@ -172,6 +173,7 @@ test('сессия администратора переживает обнов�
     if (url.pathname.endsWith('/cameras')) return route.fulfill({ json: [camera()] });
     if (url.pathname.endsWith('/cameras/7/checks')) return route.fulfill({ json: [] });
     if (url.pathname.endsWith('/cameras/7') && route.request().method() === 'PATCH') {
+      cameraPatches++;
       if (patchStatus !== 200) return route.fulfill({ status: patchStatus, json: { error: { code: 'test_error', message: 'Ошибка сохранения' } } });
       const body = route.request().postDataJSON();
       if ('is_published' in body) published = body.is_published;
@@ -190,6 +192,14 @@ test('сессия администратора переживает обнов�
   expect(logins).toBe(1);
   await page.getByRole('navigation', { name: 'Разделы панели' }).getByRole('button', { name: 'Камеры' }).click();
   await page.getByRole('button', { name: /Площадь сейчас/ }).click();
+  await page.getByRole('button', { name: 'Проверить трансляцию' }).click();
+  await expect(page.getByRole('region', { name: 'Предпросмотр камеры' })).toBeVisible();
+  await expect(page.locator('video')).toHaveCount(1);
+  await expect(page.getByText('Предпросмотр черновика · камера ещё не опубликована')).toBeVisible();
+  await page.getByRole('button', { name: 'Закрыть трансляцию' }).click();
+  await expect(page.getByRole('region', { name: 'Предпросмотр камеры' })).toHaveCount(0);
+  expect(cameraPatches).toBe(0);
+  expect(published).toBe(false);
   const beforeSave = navigations;
   await page.getByLabel('Название камеры').fill('Обновлённая камера');
   await page.getByRole('button', { name: 'Сохранить камеру' }).click();

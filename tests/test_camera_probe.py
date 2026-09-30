@@ -67,6 +67,20 @@ def test_playlist_and_browser_headers() -> None:
     assert frame_policy_allows({"Content-Security-Policy": "frame-ancestors https://livemap.example"}, "https://livemap.example")
 
 
+def test_alliance_and_vk_only_accept_public_embed_parameters() -> None:
+    alliance = "https://glaz.inetvl.ru/embed/v3/?server=100-88QTJdHdYh0SMFStxFyBSG&camera=0&width=&height=&lang=ru"
+    vk = "https://vkvideo.ru/video_ext.php?oid=-143491903&id=456240452&hash=bde71b469d8fa2a7&hd=3"
+    assert public_iframe_query_allowed(alliance, "glaz.inetvl.ru")
+    assert public_iframe_query_allowed(vk, "vkvideo.ru")
+    for value, host in ((alliance, "glaz.inetvl.ru"), (vk, "vkvideo.ru")):
+        assert not public_iframe_query_allowed(value + "&access_key=private", host)
+        assert not public_iframe_query_allowed(value + "&token=secret", host)
+        assert not public_iframe_query_allowed(value.replace("https://", "http://"), host)
+        assert not public_iframe_query_allowed(value.replace(host, "other.example"), host)
+    assert not public_iframe_query_allowed(vk.replace("hd=3", "hd=3&hd=4"), "vkvideo.ru")
+    assert not public_iframe_query_allowed(vk.replace("bde71b469d8fa2a7", "invalid"), "vkvideo.ru")
+
+
 def test_rutube_live_status_requires_public_active_broadcast() -> None:
     embed = "https://rutube.ru/play/embed/627e3e6cfcbdf991f5bc560182570dfc"
     assert rutube_embed_id(embed) == "627e3e6cfcbdf991f5bc560182570dfc"

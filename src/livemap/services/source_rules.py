@@ -8,6 +8,8 @@ from livemap.db.models import Camera, Source
 
 SENSITIVE_QUERY_KEYS = {"token", "key", "api_key", "apikey", "password", "pass", "secret", "signature", "sig", "auth"}
 IVIDEON_EMBED_HOST = "open.ivideon.com"
+ALLIANCE_EMBED_HOST = "glaz.inetvl.ru"
+VK_EMBED_HOST = "vkvideo.ru"
 IVIDEON_EMBED_KEYS = {"camera", "server", "lang", "width", "height"}
 IPEYE_EMBED_HOST = "ipeye.ru"
 IPEYE_EMBED_KEYS = {"iframe_player", "dev", "autoplay", "archive"}
@@ -80,7 +82,15 @@ def public_iframe_query_allowed(value: str, embed_host: str | None) -> bool:
             and values.get("autoplay") == "0"
             and values.get("archive") == "1"
         )
-    if embed_host != IVIDEON_EMBED_HOST or parsed.path != "/embed/v3/":
+    if embed_host == VK_EMBED_HOST and parsed.path == "/video_ext.php":
+        return (
+            set(keys) == {"oid", "id", "hash", "hd"}
+            and len(values["oid"]) <= 20 and values["oid"].removeprefix("-").isdigit()
+            and len(values["id"]) <= 20 and values["id"].isdigit()
+            and len(values["hash"]) == 16 and all(char in "0123456789abcdef" for char in values["hash"])
+            and values["hd"] in {"0", "1", "2", "3", "4"}
+        )
+    if embed_host not in {IVIDEON_EMBED_HOST, ALLIANCE_EMBED_HOST} or parsed.path != "/embed/v3/":
         return False
     return (
         set(keys) <= IVIDEON_EMBED_KEYS

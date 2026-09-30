@@ -116,7 +116,7 @@ def test_public_csp_allows_reviewed_camera_embeds(monkeypatch) -> None:
     catalog = json.loads((ROOT_DIR / "demo/camera_candidates.json").read_text(encoding="utf-8"))
     caddy = (ROOT_DIR / "frontend/Caddyfile").read_text(encoding="utf-8")
     for camera in catalog:
-        if camera.get("publish_reviewed") and camera["playback_type"] == "iframe":
+        if camera["playback_type"] == "iframe":
             origin = f'https://{camera["embed_host"]}'
             assert origin in frame_sources
             assert origin in caddy.split("frame-src ")[1].split(";")[0].split()

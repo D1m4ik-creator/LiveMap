@@ -3,11 +3,11 @@ import { Maximize2, Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PublicCamera } from '../types';
 
-type Props = { camera: PublicCamera; onClose: () => void };
+type Props = { camera: PublicCamera; onClose: () => void; preview?: boolean };
 type PlayerState = 'loading' | 'playing' | 'no-signal' | 'error';
 
-function safePlayback(camera: PublicCamera): URL | null {
-  if (camera.status !== 'online' || !camera.playback_url) return null;
+function safePlayback(camera: PublicCamera, preview: boolean): URL | null {
+  if ((!preview && camera.status !== 'online') || !camera.playback_url) return null;
   try {
     const url = new URL(camera.playback_url);
     if (url.protocol !== 'https:' || url.username || url.password) return null;
@@ -19,13 +19,13 @@ function safePlayback(camera: PublicCamera): URL | null {
   }
 }
 
-export function CameraPlayer({ camera, onClose }: Props) {
+export function CameraPlayer({ camera, onClose, preview = false }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<PlayerState>('loading');
   const [attempt, setAttempt] = useState(0);
   const [muted, setMuted] = useState(true);
-  const url = useMemo(() => safePlayback(camera), [camera]);
+  const url = useMemo(() => safePlayback(camera, preview), [camera, preview]);
 
   useEffect(() => {
     setState('loading');
@@ -99,7 +99,7 @@ export function CameraPlayer({ camera, onClose }: Props) {
         {playable && camera.playback_type === 'iframe' && state === 'error' && <div className="player-overlay" role="alert">Не удалось открыть встраиваемый плеер. <button onClick={() => setAttempt((value) => value + 1)}>Повторить</button></div>}
       </div>
       <footer className="player-footer">
-        <div><span className={`signal-dot ${camera.status}`} />{camera.status === 'online' ? 'Последняя проверка: доступна' : unavailableText}</div>
+        <div><span className={`signal-dot ${camera.status}`} />{preview ? 'Предпросмотр черновика · камера ещё не опубликована' : camera.status === 'online' ? 'Последняя проверка: доступна' : unavailableText}</div>
         <a href={camera.source_page_url} target="_blank" rel="noopener noreferrer">Источник: {camera.attribution} ↗</a>
       </footer>
     </div>

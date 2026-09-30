@@ -1,8 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { AdminCamera, AdminPlace, AdminRole, AdminSource, CameraInput, PlaybackType } from '../types';
 import { StatusBadge } from '../ui/StatusBadge';
 import { CameraChecks } from './CameraChecks';
 import { apiDate, changedFields, localDate } from './formUtils';
+
+const CameraPlayer = lazy(() => import('../player/CameraPlayer').then(({ CameraPlayer }) => ({ default: CameraPlayer })));
 
 type CameraForm = { place_id: number; source_id: number; name: string; playback_type: PlaybackType; validLocal: string; embedLocal: string };
 function initial(selected: AdminCamera | null, places: AdminPlace[], sources: AdminSource[]): CameraForm {
@@ -21,6 +23,8 @@ export function CameraEditor({ selected, places, sources, role, token, busy, onS
   onDelete: (id: number) => Promise<void>;
 }) {
   const [form, setForm] = useState<CameraForm>(() => initial(selected, places, sources));
+  const [preview, setPreview] = useState(false);
+  useEffect(() => setPreview(false), [selected?.id]);
   useEffect(() => setForm(initial(selected, places, sources)), [selected, places.length, sources.length]);
   const set = <K extends keyof CameraForm>(key: K, value: CameraForm[K]) => setForm((old) => ({ ...old, [key]: value }));
   const toBody = (current: CameraForm) => ({
@@ -42,6 +46,14 @@ export function CameraEditor({ selected, places, sources, role, token, busy, onS
     }
   };
   const source = sources.find((item) => item.id === form.source_id);
+  const previewCamera = useMemo(() => selected && source ? {
+    id: selected.id, name: selected.name, playback_type: selected.playback_type,
+    status: selected.status, last_checked_at: selected.last_checked_at,
+    last_success_at: selected.last_success_at, availability_note: null,
+    source_name: source.owner_name, source_page_url: source.public_page_url,
+    attribution: source.attribution, playback_url: source.secret_ref ? null : source.stream_url,
+    embed_host: source.embed_host,
+  } : null, [selected, source]);
   const place = places.find((item) => item.id === form.place_id);
   const original = selected ? toBody(initial(selected, places, sources)) : null;
   const dirty = original !== null && Object.keys(changedFields(original, toBody(form))).length > 0;
@@ -59,7 +71,7 @@ export function CameraEditor({ selected, places, sources, role, token, busy, onS
   if (form.validLocal && new Date(form.validLocal).getTime() <= now) issues.push('Срок актуальности камеры истёк');
   if (dirty) issues.push('Сначала сохраните изменения формы');
   const publishable = issues.length === 0;
-  return <form className="admin-form" onSubmit={submit}>
+  return <><form className="admin-form" onSubmit={submit}>
     <div className="form-grid">
       <div className="field wide"><label htmlFor="camera-name">Название камеры</label><input id="camera-name" required minLength={2} value={form.name} onChange={(e) => set('name', e.target.value)} /></div>
       <div className="field"><label htmlFor="camera-place">Место</label><select id="camera-place" required value={form.place_id} onChange={(e) => set('place_id', Number(e.target.value))}><option value={0} disabled>Выберите место</option>{places.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></div>
@@ -73,6 +85,9 @@ export function CameraEditor({ selected, places, sources, role, token, busy, onS
       {issues.length > 0 ? <ul className="publication-issues">{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul> : <p>Условия для публикации заполнены. После проверки worker камера появится на карте при свежем статусе online.</p>}
     </div>
     <div className="admin-form-actions"><button className="admin-primary" type="submit" disabled={busy || !form.place_id || !form.source_id}>{selected ? 'Сохранить камеру' : 'Создать черновик'}</button>{selected && role === 'admin' && <><button type="button" className="admin-secondary" disabled={busy || (!selected.is_published && !publishable)} onClick={() => void onPublish(selected.id, !selected.is_published)}>{selected.is_published ? 'Снять с публикации' : 'Опубликовать камеру'}</button><button type="button" className="admin-secondary admin-danger" disabled={busy} onClick={() => { if (window.confirm(`Удалить камеру «${selected.name}»?`)) void onDelete(selected.id); }}>Удалить</button></>}</div>
+    {selected && <button type="button" className="admin-secondary" disabled={busy || dirty || !source?.stream_url || Boolean(source.secret_ref) || selected.playback_type === 'rtsp'} onClick={() => setPreview(true)}>Проверить трансляцию</button>}
     {selected && role === 'admin' && <CameraChecks token={token} cameraId={selected.id} />}
-  </form>;
+  </form>
+    {preview && previewCamera && <section aria-label="Предпросмотр камеры"><p>Проверьте живые кадры и воспроизведение. Предпросмотр не публикует камеру и не подтверждает проверку автоматически.</p><Suspense fallback={<p role="status">Загружаем плеер…</p>}><CameraPlayer camera={previewCamera} preview onClose={() => setPreview(false)} /></Suspense></section>}
+  </>;
 }

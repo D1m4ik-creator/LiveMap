@@ -13,7 +13,7 @@ import re
 import socket
 import time
 from dataclasses import dataclass
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import parse_qsl, urljoin, urlsplit
 
 import aiohttp
 
@@ -131,6 +131,31 @@ def rutube_live_available(payload: object) -> bool:
     )
 
 
+def vk_embed_redirect_allowed(target: str, original: str) -> bool:
+    try:
+        safe_https_url(target, allow_query=True)
+        parsed = urlsplit(target)
+        pairs = parse_qsl(parsed.query, keep_blank_values=True)
+        values = dict(pairs)
+        if parsed.port is not None or len(values) != len(pairs):
+            return False
+        if target == original:
+            return public_iframe_query_allowed(target, "vkvideo.ru")
+        if parsed.hostname == "login.vk.ru" and parsed.path == "/":
+            return (
+                set(values) == {"act", "redirect_uri", "state", "uuid", "app_id"}
+                and values["act"] == "autologin"
+                and values["redirect_uri"] == "https://vkvideo.ru"
+                and values["app_id"].isdigit()
+            )
+        return (
+            parsed.hostname == "vkvideo.ru" and parsed.path in {"", "/"}
+            and set(values) == {"errorCode", "errorText", "state"}
+        )
+    except ProbeFailure:
+        return False
+
+
 class CameraProbe:
     def __init__(self, origin: str) -> None:
         self.origin = origin.rstrip("/")
@@ -186,12 +211,42 @@ class CameraProbe:
         if not segment:
             raise ProbeFailure("empty_segment")
 
+    async def vk_embed(self, url: str) -> aiohttp.typedefs.LooseHeaders:
+        """VK's public embed initializes anonymous cookies on its login host.
+
+        Accept only this bounded provider handshake; the final URL must be the
+        original public embed. Other probes still reject every redirect.
+        """
+        current = url
+        try:
+            async with asyncio.timeout(12):
+                for hop in range(4):
+                    safe_https_url(current, allow_query=True)
+                    async with self.client.get(current, allow_redirects=False, headers={"Referer": f"{self.origin}/"}) as response:
+                        if 300 <= response.status < 400:
+                            target = urljoin(current, response.headers.get("Location", ""))
+                            if hop == 3 or not vk_embed_redirect_allowed(target, url):
+                                raise ProbeFailure("redirect_rejected")
+                            current = target
+                            continue
+                        if response.status != 200 or current != url:
+                            raise ProbeFailure("http_error")
+                        return response.headers
+        except ProbeFailure:
+            raise
+        except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as exc:
+            raise ProbeFailure("connection_failed") from exc
+        raise ProbeFailure("redirect_rejected")
+
     async def iframe(self, url: str, embed_host: str | None, verified: bool) -> None:
         if not embed_host or urlsplit(url).hostname != embed_host:
             raise ProbeFailure("embed_host_mismatch")
         if not public_iframe_query_allowed(url, embed_host):
             raise ProbeFailure("signed_url_requires_gateway")
-        _, headers = await self._fetch(url, 0, cors=False, sample=True, allow_query=True)
+        if embed_host == "vkvideo.ru":
+            headers = await self.vk_embed(url)
+        else:
+            _, headers = await self._fetch(url, 0, cors=False, sample=True, allow_query=True)
         if not frame_policy_allows(headers, self.origin):
             raise ProbeFailure("frame_denied")
         if not verified:

@@ -6,6 +6,7 @@ import pytest
 from livemap.services.camera_probe import (
     CameraProbe, ProbeFailure, cors_allowed, first_playlist_uri, frame_policy_allows,
     public_dns_answers, rutube_embed_id, rutube_live_available, safe_https_url,
+    vk_embed_redirect_allowed,
 )
 from livemap.services.source_rules import public_iframe_query_allowed
 
@@ -95,6 +96,23 @@ def test_rutube_live_status_requires_public_active_broadcast() -> None:
     assert not rutube_live_available({**active, "live_streams": {"hls": []}})
     assert not rutube_live_available({**active, "acl_access": {"allowed": False}})
     assert not rutube_live_available({**active, "stream_type": "video"})
+
+
+def test_vk_redirect_handshake_cannot_change_camera_or_host() -> None:
+    original = "https://vkvideo.ru/video_ext.php?oid=-143491903&id=456240452&hash=bde71b469d8fa2a7&hd=3"
+    login = "https://login.vk.ru/?act=autologin&redirect_uri=https%3A%2F%2Fvkvideo.ru&state=public&uuid=public&app_id=52461373"
+    assert vk_embed_redirect_allowed(original, original)
+    assert vk_embed_redirect_allowed(login, original)
+    assert vk_embed_redirect_allowed("https://vkvideo.ru?errorCode=1&errorText=anonymous&state=public", original)
+    for target in (
+        login.replace("https%3A%2F%2Fvkvideo.ru", "https%3A%2F%2Fevil.example"),
+        login.replace("login.vk.ru", "127.0.0.1"),
+        login.replace("https://", "http://"),
+        login + "&token=secret", login + "&act=other",
+        original.replace("456240452", "456240453"),
+        "https://vkvideo.ru/private", "https://login.vk.ru:8443/?act=autologin",
+    ):
+        assert not vk_embed_redirect_allowed(target, original)
 
 
 def test_rutube_probe_checks_embed_for_public_origin(monkeypatch: pytest.MonkeyPatch) -> None:

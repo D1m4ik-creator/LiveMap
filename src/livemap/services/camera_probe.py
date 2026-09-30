@@ -93,6 +93,11 @@ def first_playlist_uri(manifest: str) -> str:
     raise ProbeFailure("empty_manifest")
 
 
+def require_live_playlist(manifest: str) -> None:
+    if "#EXT-X-ENDLIST" in manifest or "#EXT-X-PLAYLIST-TYPE:VOD" in manifest:
+        raise ProbeFailure("not_live_stream")
+
+
 def frame_policy_allows(headers: aiohttp.typedefs.LooseHeaders, origin: str) -> bool:
     xfo = str(headers.get("X-Frame-Options", "")).upper()
     if xfo.startswith(("DENY", "SAMEORIGIN")):
@@ -206,7 +211,9 @@ class CameraProbe:
         child = safe_https_url(urljoin(url, first))
         if "#EXT-X-STREAM-INF" in manifest:
             variant, _ = await self._fetch(child, MAX_MANIFEST_BYTES, cors=True)
-            child = safe_https_url(urljoin(child, first_playlist_uri(variant.decode("utf-8-sig", errors="replace"))))
+            manifest = variant.decode("utf-8-sig", errors="replace")
+            child = safe_https_url(urljoin(child, first_playlist_uri(manifest)))
+        require_live_playlist(manifest)
         segment, _ = await self._fetch(child, MAX_FRAME_BYTES, cors=True, sample=True)
         if not segment:
             raise ProbeFailure("empty_segment")

@@ -19,6 +19,7 @@ class Camera(Base):
         CheckConstraint("playback_type IN ('hls', 'iframe', 'rtsp')", name="ck_cameras_playback_type"),
         CheckConstraint("status IN ('online', 'offline', 'unknown')", name="ck_cameras_status"),
         Index("ix_cameras_public", "place_id", "is_published", "status"),
+        Index("ix_cameras_source_id", "source_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

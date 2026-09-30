@@ -7,6 +7,7 @@ from livemap.services.camera_probe import (
     CameraProbe, ProbeFailure, cors_allowed, first_playlist_uri, frame_policy_allows,
     public_dns_answers, rutube_embed_id, rutube_live_available, safe_https_url,
     vk_embed_redirect_allowed,
+    require_live_playlist,
 )
 from livemap.services.source_rules import public_iframe_query_allowed
 
@@ -58,6 +59,10 @@ def test_ipeye_public_player_rejects_extra_or_changed_parameters() -> None:
 
 
 def test_playlist_and_browser_headers() -> None:
+    for recording in ("#EXTM3U\n#EXT-X-ENDLIST", "#EXTM3U\n#EXT-X-PLAYLIST-TYPE:VOD"):
+        with pytest.raises(ProbeFailure, match="not_live_stream"):
+            require_live_playlist(recording)
+    require_live_playlist("#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:288\n#EXTINF:10,\nlive288.ts")
     assert first_playlist_uri("#EXTM3U\n#EXTINF:6,\nsegment.ts\n") == "segment.ts"
     with pytest.raises(ProbeFailure, match="invalid_manifest"):
         first_playlist_uri("<html>oops</html>")

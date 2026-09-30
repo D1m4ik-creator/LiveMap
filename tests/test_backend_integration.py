@@ -2,6 +2,8 @@ import asyncio
 import os
 import subprocess
 import sys
+import time
+import statistics
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -17,7 +19,7 @@ from livemap.db.models import AdminUser, Camera, CameraCheck, Place, Source
 from livemap.services.auth import hash_password
 from livemap.services.catalog_admin import point
 from livemap.services.camera_probe import ProbeResult
-from livemap.worker import DueCamera, save_check
+from livemap.worker import DueCamera, run_once, save_check
 
 
 @pytest.fixture(scope="module")
@@ -411,7 +413,7 @@ def test_report_and_prolonged_outage(test_database_url, monkeypatch) -> None:
     asyncio.run(run())
 
 
-def test_dense_map_is_bounded(test_database_url) -> None:
+def test_dense_map_is_bounded(test_database_url, monkeypatch) -> None:
     async def run() -> None:
         engine = create_async_engine(test_database_url)
         factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -458,6 +460,59 @@ def test_dense_map_is_bounded(test_database_url) -> None:
                 clusters = await client.get("/api/v1/places", params={"bbox": "19,41,180,82", "zoom": 3})
                 assert clusters.status_code == 200
                 assert sum(item["place_count"] for item in clusters.json()["clusters"]) >= 550
+                health = await client.get("/api/v1/health/cameras")
+                assert health.status_code == 200
+                assert health.json()["status"] == "ok" and health.json()["published"] >= 550
+                assert set(health.json()) == {"status", "published", "online", "stale", "latest_check_at"}
+                async def measure(zoom):
+                    start = time.perf_counter()
+                    result = await client.get("/api/v1/places", params={"bbox": "37,55,38,56", "zoom": zoom})
+                    assert result.status_code == 200
+                    return (time.perf_counter() - start) * 1000
+                sequential = [await measure(10) for _ in range(10)]
+                concurrent = await asyncio.gather(*(measure(10 if index % 2 else 3) for index in range(20)))
+                print({"dense_points": 550, "returned_points": 500, "response_bytes": len(response.content),
+                       "bbox_p50_ms": round(statistics.median(sequential), 2),
+                       "bbox_max_ms": round(max(sequential), 2),
+                       "concurrent_requests": 20, "concurrent_max_ms": round(max(concurrent), 2)})
+            active = peak = batches = checked = 0
+
+            class LoadProbe:
+                async def __aenter__(self):
+                    return self
+
+                async def __aexit__(self, *_args):
+                    pass
+
+                def __init__(self, _origin):
+                    pass
+
+                async def check(self, *_args, **_kwargs):
+                    nonlocal active, peak
+                    active += 1
+                    peak = max(peak, active)
+                    try:
+                        await asyncio.sleep(0.01)
+                        return ProbeResult("online", "ok", 10)
+                    finally:
+                        active -= 1
+
+            monkeypatch.setattr("livemap.worker.get_session_factory", lambda: factory)
+            monkeypatch.setattr("livemap.worker.CameraProbe", LoadProbe)
+            started = time.perf_counter()
+            while count := await run_once():
+                batches += 1
+                checked += count
+                assert batches < 1000, "Due cameras must leave the current check queue"
+            async with factory() as session:
+                saved = (await session.execute(text(
+                    "SELECT count(*) FROM camera_checks JOIN cameras ON camera_checks.camera_id=cameras.id WHERE cameras.source_id=:source_id"
+                ), {"source_id": source.id})).scalar_one()
+            assert saved == 550
+            assert peak <= min(max(get_settings().camera_check_concurrency, 1), 16)
+            print({"worker_catalog": 550, "checked": checked, "batches": batches,
+                   "peak_concurrency": peak, "seconds": round(time.perf_counter() - started, 3),
+                   "upstream": "synthetic 10ms probe; real PostGIS claim/save operations"})
         finally:
             app.dependency_overrides.clear()
             await engine.dispose()

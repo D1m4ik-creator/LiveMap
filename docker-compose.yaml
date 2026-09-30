@@ -25,6 +25,9 @@ services:
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
+      # API has no published port; only the trusted Caddy edge and app services
+      # can connect. Caddy replaces incoming forwarded headers by default.
+      FORWARDED_ALLOW_IPS: "*"
     depends_on:
       db:
         condition: service_healthy

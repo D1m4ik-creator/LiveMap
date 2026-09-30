@@ -1,0 +1,27 @@
+name: Public service monitor
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: public-service-monitor
+  cancel-in-progress: false
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: API, database, public map and camera freshness
+        run: python scripts/check_public_service.py --output monitor-result.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-service-health
+          path: monitor-result.json
+          retention-days: 14

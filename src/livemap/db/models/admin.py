@@ -25,7 +25,10 @@ class AdminUser(Base):
 
 class AdminSession(Base):
     __tablename__ = "admin_sessions"
-    __table_args__ = (Index("ix_admin_sessions_expires_at", "expires_at"),)
+    __table_args__ = (
+        Index("ix_admin_sessions_expires_at", "expires_at"),
+        Index("ix_admin_sessions_user_id", "user_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id", ondelete="CASCADE"), nullable=False)
@@ -40,7 +43,10 @@ class AdminSession(Base):
 
 class AuditEvent(Base):
     __tablename__ = "audit_events"
-    __table_args__ = (Index("ix_audit_events_entity", "entity_type", "entity_id"),)
+    __table_args__ = (
+        Index("ix_audit_events_entity", "entity_type", "entity_id"),
+        Index("ix_audit_events_actor_id", "actor_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     actor_id: Mapped[int | None] = mapped_column(ForeignKey("admin_users.id", ondelete="SET NULL"))

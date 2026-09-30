@@ -22,27 +22,50 @@ function safePlayback(camera: PublicCamera, preview: boolean): URL | null {
 export function CameraPlayer({ camera, onClose, preview = false }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
   const [state, setState] = useState<PlayerState>('loading');
   const [attempt, setAttempt] = useState(0);
   const [muted, setMuted] = useState(true);
+  const [live, setLive] = useState<boolean | null>(null);
   const url = useMemo(() => safePlayback(camera, preview), [camera, preview]);
 
   useEffect(() => {
     setState('loading');
+    setLive(null);
     if (!url || camera.playback_type !== 'hls') return;
     const video = videoRef.current;
     if (!video) return;
 
     let hls: Hls | null = null;
-    const playable = () => setState('playing');
+    let retries = 0;
+    let lastProgress = Date.now();
+    let lastTime = -1;
+    let isLive = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const playable = () => { lastProgress = Date.now(); setState('playing'); };
     const failed = () => setState('error');
     video.addEventListener('playing', playable);
     video.addEventListener('error', failed);
 
     if (Hls.isSupported()) {
-      hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+      hls = new Hls({ enableWorker: true, lowLatencyMode: true, startPosition: -1,
+        liveSyncDurationCount: 2, liveMaxLatencyDurationCount: 5, maxLiveSyncPlaybackRate: 1.2 });
+      hlsRef.current = hls;
+      hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => {
+        isLive = data.details.live;
+        setLive(data.details.live);
+        if (!data.details.live) {
+          video.pause();
+          hls?.stopLoad();
+          setState('no-signal');
+        }
+      });
       hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal) setState(data.type === Hls.ErrorTypes.NETWORK_ERROR ? 'no-signal' : 'error');
+        if (!data.fatal) return;
+        setState(data.type === Hls.ErrorTypes.NETWORK_ERROR ? 'no-signal' : 'error');
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && retries < 3) {
+          retryTimer = setTimeout(() => hls?.startLoad(-1), 1000 * 2 ** retries++);
+        }
       });
       hls.loadSource(url.href);
       hls.attachMedia(video);
@@ -51,16 +74,56 @@ export function CameraPlayer({ camera, onClose, preview = false }: Props) {
     } else {
       failed();
     }
+    const reconnect = () => {
+      if (!hls || !isLive || retries >= 3) {
+        setState('no-signal');
+        return;
+      }
+      retries++;
+      lastProgress = Date.now();
+      setState('loading');
+      hls.startLoad(-1);
+      const position = hls.liveSyncPosition;
+      if (position != null && video.seekable.length && position <= video.seekable.end(video.seekable.length - 1)) {
+        video.currentTime = position;
+      }
+      // This path follows a playing stream or ended live buffer, never a user pause.
+      void video.play().catch(() => setState('no-signal'));
+    };
+    const ended = () => { if (isLive) reconnect(); else setState('no-signal'); };
+    video.addEventListener('ended', ended);
+    const watchdog = setInterval(() => {
+      if (video.paused || !isLive) return;
+      if (Math.abs(video.currentTime - lastTime) > 0.05) {
+        lastTime = video.currentTime;
+        lastProgress = Date.now();
+      } else if (Date.now() - lastProgress > 15_000) {
+        reconnect();
+      }
+    }, 3000);
 
     return () => {
       video.removeEventListener('playing', playable);
       video.removeEventListener('error', failed);
+      video.removeEventListener('ended', ended);
+      clearTimeout(retryTimer);
+      clearInterval(watchdog);
+      hlsRef.current = null;
       hls?.destroy();
       video.pause();
       video.removeAttribute('src');
       video.load();
     };
   }, [camera.id, camera.playback_type, url, attempt]);
+
+  const goLive = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    const position = hlsRef.current?.liveSyncPosition;
+    if (position != null) video.currentTime = position;
+    else if (video.seekable.length) video.currentTime = Math.max(video.seekable.start(0), video.seekable.end(video.seekable.length - 1) - 2);
+    void video.play().catch(() => setState('error'));
+  };
 
   const playable = Boolean(url && (camera.playback_type === 'hls' || camera.playback_type === 'iframe'));
   const unavailableText = camera.availability_note ?? 'Для этой камеры нет доступной трансляции.';
@@ -81,7 +144,7 @@ export function CameraPlayer({ camera, onClose, preview = false }: Props) {
           <>
             <video ref={videoRef} controls autoPlay muted={muted} playsInline aria-label={camera.name} />
             {state === 'loading' && <div className="player-overlay" role="status">Подключаемся к трансляции…</div>}
-            {(state === 'no-signal' || state === 'error') && <div className="player-overlay" role="alert">{state === 'no-signal' ? 'Нет сигнала.' : 'Ошибка воспроизведения.'} <button onClick={() => setAttempt((value) => value + 1)}>Повторить</button></div>}
+            {(state === 'no-signal' || state === 'error') && <div className="player-overlay" role="alert">{live === false ? 'Источник передаёт запись вместо прямого эфира.' : state === 'no-signal' ? 'Нет сигнала.' : 'Ошибка воспроизведения.'} <button onClick={() => setAttempt((value) => value + 1)}>Повторить</button></div>}
           </>
         )}
         {playable && camera.playback_type === 'iframe' && (
@@ -99,6 +162,10 @@ export function CameraPlayer({ camera, onClose, preview = false }: Props) {
         {playable && camera.playback_type === 'iframe' && state === 'error' && <div className="player-overlay" role="alert">Не удалось открыть встраиваемый плеер. <button onClick={() => setAttempt((value) => value + 1)}>Повторить</button></div>}
       </div>
       <footer className="player-footer">
+        {playable && camera.playback_type === 'hls' && live !== false && <div>
+          <button onClick={goLive} disabled={state !== 'playing'}>К прямому эфиру</button>
+          <span>{state === 'playing' ? ' Прямой эфир · шкала показывает обновляемый буфер' : ' Подключение к эфиру'}</span>
+        </div>}
         <div><span className={`signal-dot ${camera.status}`} />{preview ? 'Предпросмотр черновика · камера ещё не опубликована' : camera.status === 'online' ? 'Последняя проверка: доступна' : unavailableText}</div>
         <a href={camera.source_page_url} target="_blank" rel="noopener noreferrer">Источник: {camera.attribution} ↗</a>
       </footer>

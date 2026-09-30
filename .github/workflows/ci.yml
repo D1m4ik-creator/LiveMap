@@ -45,6 +45,6 @@ jobs:
         run: npm ci
       - name: Browser journey
         working-directory: frontend
-        run: npx playwright install --with-deps chromium && npm run test:e2e
+        run: npx playwright install --with-deps chromium firefox webkit && npm run test:e2e
       - name: Container configuration
         run: cp .env.example .env && docker compose --profile app config --quiet

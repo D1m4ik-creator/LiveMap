@@ -25,6 +25,7 @@ class CameraReport(Base):
     __table_args__ = (
         CheckConstraint("status IN ('open', 'resolved')", name="ck_camera_reports_status"),
         Index("ix_camera_reports_status_time", "status", "created_at"),
+        Index("ix_camera_reports_camera_id", "camera_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

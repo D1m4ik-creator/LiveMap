@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
 from livemap.api.errors import register_error_handlers
+from livemap.api.body_limit import BodyLimitMiddleware
 from livemap.api.routers.admin_auth import router as admin_auth_router
 from livemap.api.routers.admin_catalog import router as admin_catalog_router
 from livemap.api.routers.admin_import import router as admin_import_router
@@ -62,6 +63,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     register_error_handlers(app)
+    app.add_middleware(BodyLimitMiddleware)
 
     @app.middleware("http")
     async def observe(request: Request, call_next):

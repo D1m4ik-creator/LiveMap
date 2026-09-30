@@ -13,6 +13,9 @@
     header @static Cache-Control "public, max-age=31536000, immutable"
 
     handle /api/* {
+        request_body {
+            max_size 8100000
+        }
         reverse_proxy api:8000
     }
 

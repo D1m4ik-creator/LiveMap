@@ -99,3 +99,14 @@ a{color:inherit}
 .camera-check-row>span:last-child{overflow-wrap:anywhere}
 .admin-list-state{display:grid;justify-items:end;gap:5px;white-space:nowrap}.admin-list-state .status-badge{font-size:9px}
 @media(max-width:480px){.camera-check-row{grid-template-columns:1fr auto}.camera-check-row>span:last-child{grid-column:1/-1}}
+.player-live-button {
+  border: 1px solid #4b817d;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #20413f;
+  color: #b4f3e9;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.player-live-button:disabled { opacity: .5; cursor: default; }

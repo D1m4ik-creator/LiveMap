@@ -1,5 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+  page.on('pageerror', error => console.error(`Browser runtime error: ${error.message}`));
+});
+
 const place = {
   id: 1, slug: 'test-square', name: 'Тестовая площадь', address: 'Центральная улица',
   city: 'Москва', region: 'Москва', category: 'square', coordinates: [37.62, 55.75],
@@ -78,6 +82,21 @@ test('на мобильной ширине недоступный эфир не 
   await page.getByRole('button', { name: /Площадь сейчас/ }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Трансляция временно недоступна' })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTitle('Площадь сейчас')).toHaveCount(0);
+});
+
+test('без WebGL карточка и эфир доступны, вместо карты показана ошибка', async ({ page }) => {
+  await page.addInitScript(() => {
+    const original = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (type: string, ...args: unknown[]) {
+      if (['webgl', 'webgl2', 'experimental-webgl'].includes(type)) return null;
+      return Reflect.apply(original, this, [type, ...args]);
+    } as typeof original;
+  });
+  await mockCatalog(page);
+  await page.goto('/place/1?camera=7');
+  await expect(page.getByText('Карта недоступна', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: place.name })).toBeVisible();
+  await expect(page.getByTitle('Площадь сейчас')).toBeVisible();
 });
 
 test('одобрение источника объясняет истёкший срок и требует сохранения исправлений', async ({ page }) => {

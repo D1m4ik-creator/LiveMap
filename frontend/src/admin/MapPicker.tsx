@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import type { Coordinates } from '../types';
 import { mapProvider } from '../map/provider';
@@ -9,13 +9,20 @@ export function MapPicker({ coordinates, onChange }: { coordinates: Coordinates;
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
   const changeRef = useRef(onChange);
+  const [failed, setFailed] = useState(false);
   changeRef.current = onChange;
   useEffect(() => {
     if (!container.current) return;
-    const map = new maplibregl.Map({
-      container: container.current, style: mapProvider.lightStyle,
-      center: coordinates, zoom: 10, attributionControl: { compact: true },
-    });
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
+        container: container.current, style: mapProvider.lightStyle,
+        center: coordinates, zoom: 10, attributionControl: { compact: true },
+      });
+    } catch {
+      setFailed(true);
+      return;
+    }
     const marker = new maplibregl.Marker({ color: '#00A99D' }).setLngLat(coordinates).addTo(map);
     mapRef.current = map;
     markerRef.current = marker;
@@ -29,5 +36,5 @@ export function MapPicker({ coordinates, onChange }: { coordinates: Coordinates;
       else mapRef.current.flyTo({ center: coordinates, zoom: 10, speed: 1.4 });
     }
   }, [coordinates]);
-  return <div className="admin-map-picker"><div ref={container} role="application" aria-label="Выбор координат места" /></div>;
+  return <div className="admin-map-picker"><div ref={container} role="application" aria-label="Выбор координат места" />{failed && <p role="status">Карта недоступна. Координаты можно ввести в полях формы.</p>}</div>;
 }

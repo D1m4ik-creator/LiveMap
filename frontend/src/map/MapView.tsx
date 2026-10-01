@@ -103,6 +103,7 @@ export function MapView({ data, selectedId, theme, focus, onViewport, onSelect, 
   const readyRef = useRef(onMapReady);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [initializationAttempt, setInitializationAttempt] = useState(0);
   dataRef.current = data;
   selectedRef.current = selectedId;
   viewportRef.current = onViewport;
@@ -111,13 +112,22 @@ export function MapView({ data, selectedId, theme, focus, onViewport, onSelect, 
 
   useEffect(() => {
     if (!container.current) return;
-    const map = new maplibregl.Map({
-      container: container.current,
-      style: mapProvider.lightStyle,
-      center: [90, 60], zoom: 0, minZoom: 0, maxZoom: 18,
-      attributionControl: { compact: true },
-    });
+    setLoaded(false);
+    let map: MapInstance;
+    try {
+      map = new maplibregl.Map({
+        container: container.current,
+        style: theme === 'dark' ? mapProvider.darkStyle : mapProvider.lightStyle,
+        center: [90, 60], zoom: 0, minZoom: 0, maxZoom: 18,
+        attributionControl: { compact: true },
+      });
+    } catch {
+      setError('Не удалось запустить карту. Проверьте поддержку WebGL и аппаратное ускорение браузера.');
+      readyRef.current?.(null);
+      return;
+    }
     mapRef.current = map;
+    styleThemeRef.current = theme;
     readyRef.current?.(map);
     let initialPositionSet = false;
     map.on('style.load', () => {
@@ -157,7 +167,7 @@ export function MapView({ data, selectedId, theme, focus, onViewport, onSelect, 
       if (!map.isStyleLoaded()) setError(event.error?.message || 'Не удалось загрузить карту');
     });
     return () => { window.removeEventListener('resize', onResize); readyRef.current?.(null); mapRef.current = null; map.remove(); };
-  }, []);
+  }, [initializationAttempt]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -190,7 +200,11 @@ export function MapView({ data, selectedId, theme, focus, onViewport, onSelect, 
       <div className="map-canvas" ref={container} role="application" aria-label="Интерактивная карта России с камерами" aria-describedby="map-accessibility-help" />
       <p className="sr-only" id="map-accessibility-help">Для выбора точки с клавиатуры используйте кнопку «Точки списком».</p>
       {!loaded && !error && <div className="map-loading" role="status">Загружаем карту России…</div>}
-      {error && <div className="map-error" role="alert"><strong>Карта недоступна</strong><span>{error}</span><button onClick={() => { setError(null); mapRef.current?.setStyle(theme === 'dark' ? mapProvider.darkStyle : mapProvider.lightStyle); }}>Повторить</button></div>}
+      {error && <div className="map-error" role="alert"><strong>Карта недоступна</strong><span>{error}</span><button onClick={() => {
+        setError(null);
+        if (mapRef.current) mapRef.current.setStyle(theme === 'dark' ? mapProvider.darkStyle : mapProvider.lightStyle);
+        else setInitializationAttempt(value => value + 1);
+      }}>Повторить</button></div>}
     </div>
   );
 }

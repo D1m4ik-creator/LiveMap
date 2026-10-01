@@ -163,7 +163,7 @@ export function CameraPlayer({ camera, onClose, preview = false }: Props) {
       </div>
       <footer className="player-footer">
         {playable && camera.playback_type === 'hls' && live !== false && <div>
-          <button onClick={goLive} disabled={state !== 'playing'}>К прямому эфиру</button>
+          <button className="player-live-button" onClick={goLive} disabled={state !== 'playing'}>К прямому эфиру</button>
           <span>{state === 'playing' ? ' Прямой эфир · шкала показывает обновляемый буфер' : ' Подключение к эфиру'}</span>
         </div>}
         <div><span className={`signal-dot ${camera.status}`} />{preview ? 'Предпросмотр черновика · камера ещё не опубликована' : camera.status === 'online' ? 'Последняя проверка: доступна' : unavailableText}</div>

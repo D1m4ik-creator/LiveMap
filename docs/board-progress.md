@@ -7,7 +7,8 @@
 
 - Мониторинг отправлен в main: [35ba9dd](https://github.com/D1m4ik-creator/LiveMap/commit/35ba9dd97dc514db51e35033ec9c0428278aa57f).
   Расписание раз в шесть часов теперь находится в default branch.
-  Первый запуск: [37064762834](https://github.com/D1m4ik-creator/LiveMap/actions/runs/37064762834).
+  Первый запуск: [37064762834](https://github.com/D1m4ik-creator/LiveMap/actions/runs/37064762834) — success.
+  После холодного старта Render повтор прошёл: 15 online, 0 stale, БД и карта доступны.
 - Исправлены проверки при Python -O и timeout workflow.
 - Добавлена опциональная доставка incidents через GitHub Issues без дублей.
   Переменная LIVEMAP_MONITOR_ISSUES пока не включена: канал не выбран.
@@ -17,6 +18,10 @@
 - Добавлен интеграционный тест конкурентной записи во время pg_dump.
   CI использует pg_dump из PostGIS service, чтобы совпадали версии сервера
   и клиента.
+- Код отправлен в codex/livemap-foundation: [1d276bd](https://github.com/D1m4ik-creator/LiveMap/commit/1d276bdfe837d0b7fc3b13289fb8d313bdb673eb).
+- [CI 37065133837](https://github.com/D1m4ik-creator/LiveMap/actions/runs/37065133837) — success:
+  40 backend-тестов, включая реальный pg_dump со snapshot, и 18 UI-сценариев.
+  9 live-сценариев пропущены: реальные эфиры/Safari по ним не приняты.
 - Локально: 11 проверок прошли, один интеграционный тест пропущен без БД.
   Проверки прошли и при Python -O; YAML parsed, Python compilation passed.
 

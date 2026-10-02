@@ -39,6 +39,8 @@ jobs:
       - name: Install Python dependencies
         run: pip install uv && uv sync --frozen
       - name: Backend and migrations
+        env:
+          PG_DUMP_DOCKER_CONTAINER: ${{ job.services.postgres.id }}
         run: uv run alembic upgrade head && uv run alembic check && uv run pytest -q
       - name: Frontend build
         working-directory: frontend

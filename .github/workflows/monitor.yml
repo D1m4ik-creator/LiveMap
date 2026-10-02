@@ -1,6 +1,13 @@
 name: Public service monitor
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/monitor.yml'
+      - 'scripts/check_public_service.py'
+      - 'scripts/report_monitor_issue.py'
+      - 'tests/test_public_monitor.py'
   schedule:
     - cron: '17 */6 * * *'
 permissions:
@@ -11,17 +18,34 @@ concurrency:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    # Three attempts can take 3 x 3 x 60 + 2 x 30 = 600 seconds.
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - name: Verify monitoring
+        run: python -m unittest discover -s tests -p test_public_monitor.py
       - name: API, database, public map and camera freshness
+        id: health
+        continue-on-error: true
         run: python scripts/check_public_service.py --output monitor-result.json
+      - name: Incident notification
+        if: always() && vars.LIVEMAP_MONITOR_ISSUES == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEALTH_OUTCOME: ${{ steps.health.outcome }}
+        run: python scripts/report_monitor_issue.py --result monitor-result.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: public-service-health
           path: monitor-result.json
           retention-days: 14
+      - name: Propagate health failure
+        if: always() && steps.health.outcome != 'success'
+        run: exit 1

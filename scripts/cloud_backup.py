@@ -28,7 +28,8 @@ def connection_env(config: Config, *, migration: bool) -> dict[str, str]:
     result = {**os.environ, "PGHOST": database.host, "PGPORT": str(database.port),
               "PGDATABASE": database.db, "PGUSER": database.user,
               "PGPASSWORD": database.password.get_secret_value(),
-              "PGSSLMODE": "verify-full" if database.ssl else "disable"}
+              "PGSSLMODE": "verify-full" if database.ssl else "disable",
+              "PGCONNECT_TIMEOUT": "15"}
     if database.ssl_ca_file:
         result["PGSSLROOTCERT"] = str(Path(database.ssl_ca_file).resolve())
     return result
@@ -47,6 +48,18 @@ def counts(cursor, schema: str) -> dict[str, int]:
     )
     cursor.execute(query)
     return dict(cursor.fetchall())
+
+
+def snapshot_manifest(connection, schema: str) -> tuple[dict, str]:
+    """Keep this transaction open until pg_dump imports its snapshot."""
+    connection.set_session(isolation_level="REPEATABLE READ", readonly=True)
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_export_snapshot()")
+        snapshot = cursor.fetchone()[0]
+        manifest = {"schema": schema, "created_at": datetime.now(timezone.utc).isoformat(),
+                    "counts": counts(cursor, schema), "consistent_snapshot": True,
+                    "counts_note": "Counts and pg_dump use the same exported snapshot."}
+    return manifest, snapshot
 
 
 def main() -> None:
@@ -74,16 +87,13 @@ def main() -> None:
             target = args.output / ("livemap-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + ".dump.age")
             if target.exists():
                 raise ValueError("Backup already exists; refusing to overwrite")
-            with connect(env) as connection, connection.cursor() as cursor:
-                manifest = {"schema": config.database_schema, "created_at": datetime.now(timezone.utc).isoformat(),
-                            "counts": counts(cursor, config.database_schema),
-                            "counts_note": "Observed immediately before pg_dump; dump uses its own consistent snapshot."}
-                connection.commit()
-            connection.close()
+            connection = connect(env)
             # Plaintext stays in memory/pipes until age encrypts it.
-            header = json.dumps(manifest).encode("utf-8")
-            encrypt = subprocess.Popen([args.age, "--recipient", args.recipient, "--output", str(target)], stdin=subprocess.PIPE)
+            encrypt = None
             try:
+                manifest, snapshot = snapshot_manifest(connection, config.database_schema)
+                header = json.dumps(manifest).encode("utf-8")
+                encrypt = subprocess.Popen([args.age, "--recipient", args.recipient, "--output", str(target)], stdin=subprocess.PIPE)
                 encrypt.stdin.write(b"LMAP1" + struct.pack(">I", len(header)) + header)
                 encrypt.stdin.flush()
                 command = [str(args.pg_bin / ("pg_dump" + suffix))]
@@ -97,15 +107,18 @@ def main() -> None:
                         dump_env = {**env, "PGSSLROOTCERT": "/ca.crt"}
                     command.extend(["postgres:17-alpine", "pg_dump"])
                 subprocess.run(command + ["--format=custom", "--no-owner", "--no-acl",
-                                "--schema=" + config.database_schema], env=dump_env, stdout=encrypt.stdin, check=True, timeout=180)
+                                "--snapshot=" + snapshot, "--schema=" + config.database_schema], env=dump_env, stdout=encrypt.stdin, check=True, timeout=180)
                 encrypt.stdin.close()
-                if encrypt.wait() != 0:
+                if encrypt.wait(timeout=30) != 0:
                     raise RuntimeError("Encryption failed")
             except BaseException:
-                encrypt.kill()
-                encrypt.wait()
+                if encrypt is not None:
+                    encrypt.kill()
+                    encrypt.wait()
                 target.unlink(missing_ok=True)
                 raise
+            finally:
+                connection.close()
             print(json.dumps({"encrypted_archive": str(target), **manifest}, ensure_ascii=False))
         else:
             if not args.archive or not args.identity:
@@ -141,11 +154,12 @@ def main() -> None:
                                 "--no-owner", "--no-acl", "--exit-on-error", "--single-transaction", str(dump)], env=restore_env, check=True)
                 with connect(restore_env) as connection, connection.cursor() as cursor:
                     actual = counts(cursor, manifest["schema"])
-                    stable_tables = ("places", "sources", "cameras", "admin_users", "camera_reports", "alembic_version")
+                    stable_tables = TABLES if manifest.get("consistent_snapshot") else ("places", "sources", "cameras", "admin_users", "camera_reports", "alembic_version")
                     if any(actual[table] != manifest["counts"][table] for table in stable_tables):
                         raise ValueError("Catalog changed during export; repeat verification with writes paused")
                     cursor.execute(sql.SQL("SELECT count(*) FROM {}.places WHERE NOT extensions.ST_IsValid(geometry)").format(sql.Identifier(manifest["schema"])))
-                    assert cursor.fetchone()[0] == 0, "Invalid restored geometry"
+                    if cursor.fetchone()[0] != 0:
+                        raise ValueError("Invalid restored geometry")
                 connection.close()
                 print(json.dumps({"restore_verified": True, "counts": actual, "all_counts_match": actual == manifest["counts"], "isolated_database": restore_name}))
             finally:

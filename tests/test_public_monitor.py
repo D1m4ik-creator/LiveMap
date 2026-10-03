@@ -72,6 +72,17 @@ class IncidentTests(unittest.TestCase):
         incident.reconcile(True, items, self.request, "https://github.com/run/2")
         self.request.assert_not_called()
 
+    def test_backup_incident_is_separate_from_service_outage(self):
+        incident.reconcile(False, [self.issue], self.request, "https://github.com/run/3", kind="backup")
+        body = self.request.call_args.args[2]
+        self.assertIn("backup", body["title"])
+        self.assertIn("livemap-catalog-backup", body["body"])
+
+    def test_healthy_service_does_not_close_backup_outage(self):
+        backup = {"number": 5, "title": "[LiveMap backup] Encrypted backup unavailable", "body": "<!-- livemap-catalog-backup -->"}
+        incident.reconcile(True, [backup], self.request, "https://github.com/run/4")
+        self.request.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -52,8 +52,10 @@ def request(path: str) -> httpx.Response:
     return asyncio.run(send())
 
 
-def test_settings_load_root_env_and_async_driver() -> None:
+def test_settings_load_root_env_and_async_driver(monkeypatch) -> None:
     assert ROOT_DIR == Path(__file__).resolve().parents[1]
+    # This checks the example file, independently of a CI/local test DB user.
+    monkeypatch.delenv("POSTGRES_USER", raising=False)
     settings = Config(_env_file=ROOT_DIR / ".env.example")
     assert settings.postgres_user == "livemap"
 

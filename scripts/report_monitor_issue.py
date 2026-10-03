@@ -13,21 +13,25 @@ TITLE = "[LiveMap monitor] Public service unavailable"
 MARKER = "<!-- livemap-public-monitor -->"
 
 
-def reconcile(healthy, issues, request, run_url):
-    incidents = [item for item in issues if item.get("title") == TITLE
-                 and MARKER in (item.get("body") or "") and not item.get("pull_request")]
+def reconcile(healthy, issues, request, run_url, kind="service"):
+    title = TITLE if kind == "service" else "[LiveMap backup] Encrypted backup unavailable"
+    marker = MARKER if kind == "service" else "<!-- livemap-catalog-backup -->"
+    incidents = [item for item in issues if item.get("title") == title
+                 and marker in (item.get("body") or "") and not item.get("pull_request")]
     if healthy:
         for item in incidents:
             request("PATCH", f"/issues/{item['number']}", {"state": "closed", "state_reason": "completed",
                     "body": item["body"] + f"\n\nRecovered: {run_url}"})
     elif not incidents:
-        request("POST", "/issues", {"title": TITLE, "body": MARKER +
-                f"\n\nReadiness, public catalog or camera freshness check failed.\n\nRun and diagnostic artifact: {run_url}"})
+        description = "Readiness, public catalog or camera freshness check failed." if kind == "service" else "Encrypted catalog export or external artifact upload failed."
+        request("POST", "/issues", {"title": title, "body": marker +
+                f"\n\n{description}\n\nRun and diagnostic artifact: {run_url}"})
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--result", type=Path, default=Path("monitor-result.json"))
+    parser.add_argument("--kind", choices=("service", "backup"), default="service")
     args = parser.parse_args()
     repository = os.environ["GITHUB_REPOSITORY"]
     token = os.environ["GITHUB_TOKEN"]
@@ -54,7 +58,7 @@ def main():
     except (OSError, ValueError):
         result = {}
     healthy = result.get("status") == "ok" and os.environ.get("HEALTH_OUTCOME") == "success"
-    reconcile(healthy, issues, request, run_url)
+    reconcile(healthy, issues, request, run_url, args.kind)
 
 
 if __name__ == "__main__":

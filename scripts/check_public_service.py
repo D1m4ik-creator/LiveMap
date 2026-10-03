@@ -17,16 +17,22 @@ def check(origin: str, *, attempts: int = 3, delay: float = 30) -> dict:
     for attempt in range(attempts):
         start = time.monotonic()
         try:
-            ready = read(origin, "/api/v1/health/ready")
-            cameras = read(origin, "/api/v1/health/cameras")
-            catalog = read(origin, "/api/v1/places?bbox=19,41,180,82&zoom=3")
+            latencies = {}
+            def sample(path):
+                started = time.monotonic()
+                body = read(origin, path)
+                latencies[path.split("?")[0]] = round(time.monotonic() - started, 3)
+                return body
+            ready = sample("/api/v1/health/ready")
+            cameras = sample("/api/v1/health/cameras")
+            catalog = sample("/api/v1/places?bbox=19,41,180,82&zoom=3")
             if ready.get("status") != "ok":
                 raise ValueError("Database readiness failed")
             if cameras.get("status") != "ok":
                 raise ValueError("No current stream or camera worker checks are stale")
             if not (catalog.get("clusters") or catalog.get("points")):
                 raise ValueError("Public map is empty")
-            result.update(status="ok", cameras=cameras, duration_seconds=round(time.monotonic() - start, 3))
+            result.update(status="ok", cameras=cameras, latency_seconds=latencies, duration_seconds=round(time.monotonic() - start, 3))
             break
         except Exception as exc:
             result["attempts"].append({"number": attempt + 1, "error": str(exc), "duration_seconds": round(time.monotonic() - start, 3)})

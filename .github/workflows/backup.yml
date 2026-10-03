@@ -1,0 +1,66 @@
+name: Encrypted catalog backup
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/livemap-foundation]
+    paths: ['.github/workflows/backup.yml', 'scripts/catalog_backup.py']
+  schedule:
+    - cron: '43 2 * * *'
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: encrypted-catalog-backup
+  cancel-in-progress: false
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/livemap-foundation
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install export tools
+        run: sudo apt-get update && sudo apt-get install -y age && pip install uv && uv sync --frozen --no-dev
+      - name: Read-only consistent export; encrypt before writing
+        id: export
+        continue-on-error: true
+        env:
+          POSTGRES_HOST: aws-1-eu-central-1.pooler.supabase.com
+          POSTGRES_PORT: '5432'
+          POSTGRES_DB: postgres
+          POSTGRES_USER: livemap_backup.jpjynmxezjnzcdnrumxr
+          POSTGRES_PASSWORD: ${{ secrets.LIVEMAP_BACKUP_DB_PASSWORD }}
+          POSTGRES_SSL: 'true'
+          POSTGRES_SSL_CA_FILE: deploy/certs/supabase-prod-ca-2021.crt
+          DATABASE_SCHEMA: livemap
+          AGE_RECIPIENT: ${{ vars.LIVEMAP_BACKUP_RECIPIENT }}
+        run: |
+          test -n "$POSTGRES_PASSWORD" && test -n "$AGE_RECIPIENT"
+          uv run python scripts/catalog_backup.py backup --env-file /dev/null --recipient "$AGE_RECIPIENT" --output backups > backup-manifest.json
+      - name: Store encrypted archive outside Supabase and Render
+        id: upload
+        if: steps.export.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: livemap-encrypted-catalog-${{ github.run_id }}
+          path: |
+            backups/*.catalog.age
+            backup-manifest.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Backup incident notification
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BACKUP_OK: ${{ steps.export.outcome == 'success' && steps.upload.outcome == 'success' }}
+          HEALTH_OUTCOME: ${{ steps.export.outcome == 'success' && steps.upload.outcome == 'success' && 'success' || 'failure' }}
+        run: |
+          python -c 'import json,os; from pathlib import Path; Path("backup-status.json").write_text(json.dumps({"status":"ok" if os.environ["BACKUP_OK"] == "true" else "failed"}))'
+          python scripts/report_monitor_issue.py --result backup-status.json --kind backup
+      - name: Preserve failing run status
+        if: steps.export.outcome != 'success' || steps.upload.outcome != 'success'
+        run: exit 1

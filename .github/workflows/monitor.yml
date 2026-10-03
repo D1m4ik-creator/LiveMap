@@ -2,7 +2,7 @@ name: Public service monitor
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, codex/livemap-foundation]
     paths:
       - '.github/workflows/monitor.yml'
       - 'scripts/check_public_service.py'
@@ -25,6 +25,8 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: codex/livemap-foundation
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'

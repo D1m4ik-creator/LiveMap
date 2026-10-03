@@ -1,0 +1,8 @@
+{$MEDIA_DOMAIN} {
+    handle /camera1/* {
+        reverse_proxy gateway:8888
+    }
+    handle {
+        respond "Not found" 404
+    }
+}

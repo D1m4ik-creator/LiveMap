@@ -15,7 +15,9 @@ from livemap.api.schemas.catalog import (
 )
 from livemap.db.models import Camera, Place, Source
 from livemap.services.geo import BBox
-from livemap.services.source_rules import public_iframe_query_allowed
+from livemap.services.source_rules import (
+    GATEWAY_SECRET_REF, gateway_playback_url, public_iframe_query_allowed, public_stream_binding,
+)
 
 
 MAX_MAP_ITEMS = 500
@@ -69,7 +71,12 @@ def published_camera(now: datetime):
                 Source.stream_url.like("https://vkvideo.ru/video_ext.php?%"),
             ),
         ),
-        Source.secret_ref.is_(None),
+        or_(Source.secret_ref.is_(None), and_(
+            gateway_playback_url() is not None,
+            Camera.playback_type == "hls",
+            Source.secret_ref == GATEWAY_SECRET_REF,
+            Source.stream_url == gateway_playback_url(),
+        )),
     )
 
 
@@ -209,7 +216,8 @@ async def place_detail(session: AsyncSession, place_id: int) -> PlaceDetail | No
         can_play = (
             effective_status == "online"
             and camera.playback_type in ("hls", "iframe")
-            and source.secret_ref is None
+            and public_stream_binding(source)
+            and (source.secret_ref is None or camera.playback_type == "hls")
             and bool(source.stream_url and source.stream_url.startswith("https://"))
             and (
                 public_iframe_query_allowed(source.stream_url, source.embed_host)

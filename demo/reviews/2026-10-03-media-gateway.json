@@ -1,0 +1,30 @@
+{
+  "fixture": "generated H264 test pattern; not a real street camera",
+  "checks": [
+    "RTSP TCP -> HLS fMP4, exact-origin CORS",
+    "media segment delivered; unapproved origin is not granted CORS",
+    "20 simultaneous HTTP segment requests; not 20 long-running players",
+    "upstream interruption and restart recovered"
+  ],
+  "parallel_segment_requests": 20,
+  "parallel_seconds": 0.037,
+  "idle_upstream_closed": true,
+  "date": "2026-10-03",
+  "mediamtx_version": "1.21.1",
+  "browser_method": "Temporary API and HTTPS URL substitution in the local test browser; not a public gateway TLS test",
+  "browsers": {
+    "chromium": {
+      "width": 640,
+      "height": 360,
+      "current_time": 9.958637,
+      "paused": false
+    },
+    "firefox": {
+      "width": 640,
+      "height": 360,
+      "current_time": 140.794239,
+      "ready_state": 4,
+      "paused": false
+    }
+  }
+}

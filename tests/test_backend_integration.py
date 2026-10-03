@@ -54,7 +54,7 @@ def test_database_url():
         asyncio.run(drop_database())
 
 
-def test_admin_catalog_map_search_and_import(test_database_url) -> None:
+def test_admin_catalog_map_search_and_import(test_database_url, monkeypatch) -> None:
     async def run() -> None:
         engine = create_async_engine(test_database_url)
         factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -278,6 +278,26 @@ def test_admin_catalog_map_search_and_import(test_database_url) -> None:
                 assert secret_camera.status_code == 201, secret_camera.text
                 assert (await call("PATCH", f"/api/v1/admin/cameras/{secret_camera.json()['id']}", token=token, json={"is_published": True})).status_code == 409
                 assert "PRIVATE_STREAM_KEY" not in (await call("GET", f"/api/v1/places/{place_id}")).text
+                monkeypatch.setattr(get_settings(), "media_gateway_public_base", "https://media.example.org")
+                gateway_url = "https://media.example.org/camera1/index.m3u8"
+                update = await call("PATCH", f"/api/v1/admin/sources/{secret_id}", token=token,
+                                    json={"stream_url": gateway_url, "secret_ref": "LIVEMAP_RTSP_UPSTREAM"})
+                assert update.status_code == 200, update.text
+                assert (await call("PATCH", f"/api/v1/admin/sources/{secret_id}", token=token,
+                                   json={"is_approved": True})).status_code == 200
+                assert (await call("PATCH", f"/api/v1/admin/cameras/{secret_camera.json()['id']}", token=token,
+                                   json={"is_published": True, "status": "online"})).status_code == 200
+                # Worker confirmation, not a manual online toggle, makes playback available.
+                async with factory() as session:
+                    gateway_camera = await session.get(Camera, secret_camera.json()['id'])
+                    gateway_camera.last_checked_at = datetime.now(timezone.utc)
+                    await session.commit()
+                public = await call("GET", f"/api/v1/places/{place_id}")
+                assert gateway_url in public.text and "LIVEMAP_RTSP_UPSTREAM" not in public.text
+                mapped = await call("GET", "/api/v1/places", params={"bbox": "37,55,38,56", "zoom": 12})
+                assert any(item["id"] == place_id for item in mapped.json()["points"])
+                monkeypatch.setattr(get_settings(), "media_gateway_public_base", None)
+                assert gateway_url not in (await call("GET", f"/api/v1/places/{place_id}")).text
                 assert (await call("DELETE", f"/api/v1/admin/cameras/{secret_camera.json()['id']}", token=token)).status_code == 204
                 assert (await call("DELETE", f"/api/v1/admin/sources/{secret_id}", token=token)).status_code == 204
 

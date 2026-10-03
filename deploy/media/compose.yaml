@@ -1,0 +1,31 @@
+# Standalone gateway: no database network or database credentials.
+services:
+  gateway:
+    platform: linux/amd64
+    build:
+      context: ../..
+      dockerfile: deploy/media/Dockerfile
+    environment:
+      LIVEMAP_RTSP_UPSTREAM: ${LIVEMAP_RTSP_UPSTREAM:?Set the approved upstream outside Git}
+      LIVEMAP_RTSP_ALLOWED_HOST: ${LIVEMAP_RTSP_ALLOWED_HOST:?Set its exact host}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set the LiveMap HTTPS origin}
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp:size=1m,mode=1777]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 1
+    mem_limit: 512m
+    pids_limit: 64
+  https:
+    image: caddy:2-alpine
+    environment:
+      MEDIA_DOMAIN: ${MEDIA_DOMAIN:?Set the gateway HTTPS domain}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - media_tls:/data
+    restart: unless-stopped
+    depends_on: [gateway]
+volumes:
+  media_tls:

@@ -50,6 +50,13 @@ jobs:
         run: npx playwright install --with-deps chromium firefox webkit && xvfb-run -a npm run test:e2e
       - name: Container configuration
         run: cp .env.example .env && docker compose --profile app config --quiet
+      - name: Media gateway configuration
+        env:
+          LIVEMAP_RTSP_UPSTREAM: rtsp://camera.example/live
+          LIVEMAP_RTSP_ALLOWED_HOST: camera.example
+          PUBLIC_ORIGIN: https://livemap-demo.onrender.com
+          MEDIA_DOMAIN: media.example
+        run: docker compose -f deploy/media/compose.yaml config --quiet
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

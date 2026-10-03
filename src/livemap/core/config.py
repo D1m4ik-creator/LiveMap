@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 import ssl
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -74,11 +75,20 @@ class Config(BaseSettings):
     camera_check_concurrency: int = 4
     serve_frontend: bool = False
     embedded_worker: bool = False
+    media_gateway_public_base: str | None = None
 
     @model_validator(mode="after")
     def check_migration_credentials(self) -> "Config":
         if bool(self.postgres_migration_user) != bool(self.postgres_migration_password):
             raise ValueError("Migration user and password must be configured together")
+        if self.media_gateway_public_base:
+            value = urlsplit(self.media_gateway_public_base)
+            if (value.scheme != "https" or not value.hostname or value.username or value.password
+                    or value.query or value.fragment or value.path not in ("", "/")
+                    or "\\" in self.media_gateway_public_base
+                    or any(ord(c) < 32 for c in self.media_gateway_public_base)):
+                raise ValueError("Media gateway must be one HTTPS origin")
+            self.media_gateway_public_base = self.media_gateway_public_base.rstrip("/")
         return self
 
     @property

@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-03",
+  "origin": "https://livemap-demo.onrender.com",
+  "reviews": [
+    {
+      "camera_id": 16,
+      "place_id": 15,
+      "name": "Судостроительная — Графитная",
+      "coordinates": [92.824665, 55.980841],
+      "precision": "operator map marker, not a survey of the physical mount",
+      "evidence": ["https://24oko.ru/map", "https://24oko.ru/request/city", "https://24oko.ru/request/camera/url/c_6236"],
+      "match": "marker c_6236; preview and embed path sud25gd_1 match the existing HLS stream"
+    },
+    {
+      "camera_id": 15,
+      "place_id": 14,
+      "name": "ТЦ «Сибирь» — Городская площадь",
+      "coordinates": [76.678791, 66.086231],
+      "precision": "named place; physical camera mount remains unconfirmed",
+      "evidence": ["https://impulssrv.12bit.ru/playlist.txt", "https://2gis.ru/n_urengoy/firm/70000001027617686", "https://yandex.com/maps/11230/noviy-urengoy/house/Y08YcABoTkwGQFhsfXx5d35gZQ%3D%3D/"],
+      "match": "operator playlist names cam9015 ТЦ «Сибирь»; maps identify Интернациональная, 4Б"
+    },
+    {
+      "camera_id": 1,
+      "published": false,
+      "evidence": ["https://tvspb.ru/online-projects/1439/"],
+      "result": "owner page still embeds IVs1-afeqow; no replacement found; working Gostiny Dvor source already exists at this place"
+    },
+    {
+      "camera_id": 2,
+      "published": false,
+      "evidence": ["https://bolotnaya.online/en/for-agents/", "https://bolotnaya.online/ru/cameras/bolotnaya-square/"],
+      "candidate_url": "https://cam.bolotnaya.online/lmost_new/index.m3u8",
+      "result": "owner publishes the URL but marks camera under maintenance; direct playlist check returns HTTP 403"
+    },
+    {
+      "camera_id": 5,
+      "published": false,
+      "candidate_url": "https://wowza-2.novo-sibirsk.ru/live/PLenina.stream/playlist.m3u8",
+      "result": "RUTUBE playback options return 404; alternate HLS fails TLS issuer-chain validation with certifi and OS trust; not published"
+    }
+  ],
+  "rtsp_candidate": {
+    "owner": "Telecoma",
+    "public_place_id": 15,
+    "url": "rtsp://fl-4.telecoma.tv/sud25gd_1",
+    "derivation": "documented Flussonic playback syntax applied to the owner's existing public stream path",
+    "result": "RTSP DESCRIBE returned 403 Denied; no credentials attempted; not connected to production gateway"
+  }
+}

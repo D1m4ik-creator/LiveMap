@@ -4,6 +4,7 @@ from urllib.parse import parse_qsl, urlsplit
 
 from livemap.api.errors import APIError
 from livemap.db.models import Camera, Source
+from livemap.core.config import get_settings
 
 
 SENSITIVE_QUERY_KEYS = {"token", "key", "api_key", "apikey", "password", "pass", "secret", "signature", "sig", "auth"}
@@ -13,6 +14,20 @@ VK_EMBED_HOST = "vkvideo.ru"
 IVIDEON_EMBED_KEYS = {"camera", "server", "lang", "width", "height"}
 IPEYE_EMBED_HOST = "ipeye.ru"
 IPEYE_EMBED_KEYS = {"iframe_player", "dev", "autoplay", "archive"}
+GATEWAY_SECRET_REF = "LIVEMAP_RTSP_UPSTREAM"
+
+
+def gateway_playback_url() -> str | None:
+    base = get_settings().media_gateway_public_base
+    return f"{base}/camera1/index.m3u8" if base else None
+
+
+def public_stream_binding(source: Source) -> bool:
+    return source.secret_ref is None or (
+        source.secret_ref == GATEWAY_SECRET_REF
+        and gateway_playback_url() is not None
+        and source.stream_url == gateway_playback_url()
+    )
 
 
 def validate_url(value: str, schemes: set[str]) -> str:
@@ -111,12 +126,14 @@ def ensure_source_publishable(source: Source) -> None:
         raise APIError("permission_expired", "Source permission has expired", 409)
     if not source.stream_url:
         raise APIError("missing_stream", "Source has no stream URL", 409)
-    if source.secret_ref:
+    if not public_stream_binding(source):
         raise APIError("gateway_required", "Source requires a media gateway", 409)
 
 
 def ensure_camera_publishable(camera: Camera, source: Source) -> None:
     ensure_source_publishable(source)
+    if source.secret_ref and camera.playback_type != "hls":
+        raise APIError("gateway_required", "Gateway publication requires HTTPS HLS", 409)
     if camera.playback_type == "rtsp":
         raise APIError("gateway_required", "RTSP publication requires a media gateway", 409)
     if camera.valid_until and camera.valid_until <= datetime.now(timezone.utc):

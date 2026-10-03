@@ -115,3 +115,11 @@ Security Advisor вернул 0 замечаний.
 Доказательства источников: `demo/reviews/2026-10-03-followup.json`.
 Родительские C01e/C01f/C09 остаются открытыми с конкретными внешними условиями;
 выполненные части вынесены в C01fa/C09a.
+
+Продолжение запушено в `codex/livemap-foundation`, коммит `f626787`.
+CI 37150093854 — success: 46 backend / 18 UI; Compose приложения и шлюза валидны.
+Render dep-db0lv3m0tbcc738e8dng — live на f626787. Пустой
+`MEDIA_GATEWAY_PUBLIC_BASE` сохраняет публичный gateway выключенным до получения
+рабочего RTSP. Readiness, каталог и worker после деплоя работают:
+15 published / 14 online / 0 stale. Публичные `/places/14` и `/places/15`
+возвращают новые названия, адреса и координаты, совпадающие с Supabase/seed.

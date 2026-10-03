@@ -53,3 +53,15 @@ E03 и E10 перенесены владельцем в «Готово» и за
 
 Исключённые задачи не считаются реализованными. Render Free — демонстрационный
 стенд со сном процесса; расписания GitHub не обеспечивают непрерывный worker.
+
+## Выпуск продолжения
+
+Код [f626787](https://github.com/D1m4ik-creator/LiveMap/commit/f6267877c5d5131e34c405f299e52331b079ac8b)
+запушен в `codex/livemap-foundation`.
+[CI](https://github.com/D1m4ik-creator/LiveMap/actions/runs/37150093854) успешен:
+46 backend, 18 UI; обе конфигурации Compose прошли проверку.
+Render `dep-db0lv3m0tbcc738e8dng` — live на этом коммите.
+На API `MEDIA_GATEWAY_PUBLIC_BASE` пустой до появления рабочего upstream;
+обновление окружения запустило новый deploy. Публичная проверка после выпуска:
+readiness ok, 15 published / 14 online / 0 stale; новые подписи и координаты
+обеих камер подтверждены публичным API. Результаты записаны в E07g на доске.
